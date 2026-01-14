@@ -1,0 +1,111 @@
+{
+  "version": "1.0",
+  "description": "Ground truth annotations for Takeoff.ai blueprint parsing validation",
+  "annotations": [
+    {
+      "file": "01_roomsketcher_apartment_metric.png",
+      "unit_system": "metric",
+      "total_area": "71 m²",
+      "overall_dimensions": {
+        "width": "9.05 m",
+        "height": "7.90 m"
+      },
+      "rooms": [
+        {"name": "Kitchen & Dining Area", "area_m2": 14.8, "dimensions": null},
+        {"name": "Bathroom", "area_m2": 4.5, "dimensions": null},
+        {"name": "Entry Hall", "area_m2": 6.2, "dimensions": null},
+        {"name": "Balcony", "area_m2": 9.8, "dimensions": null},
+        {"name": "Living Area", "area_m2": 21.4, "dimensions": null},
+        {"name": "Bedroom", "area_m2": 9.6, "dimensions": null}
+      ],
+      "room_count": 6,
+      "notes": "Clear metric labels with area in m². Good test case for metric parsing."
+    },
+    {
+      "file": "02_houseplans_traditional_imperial.jpg",
+      "unit_system": "imperial",
+      "total_area": null,
+      "overall_dimensions": {
+        "width": "71'-2\"",
+        "height": "67'-10\""
+      },
+      "rooms": [
+        {"name": "2 Car Garage", "area_m2": null, "dimensions": "23'-0\" x 25'-0\""},
+        {"name": "Storage", "area_m2": null, "dimensions": null},
+        {"name": "Breakfast Area", "area_m2": null, "dimensions": "10'-6\" x 10'-8\""},
+        {"name": "Mud Room", "area_m2": null, "dimensions": null},
+        {"name": "Great Room", "area_m2": null, "dimensions": "15'-2\" x 21'-8\""},
+        {"name": "Master Bedroom", "area_m2": null, "dimensions": "13'-0\" x 17'-0\""},
+        {"name": "Kitchen", "area_m2": null, "dimensions": "12'-10\" x 13'-4\""},
+        {"name": "Dining Room", "area_m2": null, "dimensions": "13'-0\" x 12'-8\""},
+        {"name": "Foyer", "area_m2": null, "dimensions": "11'-10\" x 9'-2\""},
+        {"name": "Study/Bedroom 2", "area_m2": null, "dimensions": "13'-0\" x 12'-0\""},
+        {"name": "Deck", "area_m2": null, "dimensions": null},
+        {"name": "Porch", "area_m2": null, "dimensions": null}
+      ],
+      "room_count": 12,
+      "notes": "Complex traditional plan with imperial measurements. Good test for feet-inches parsing."
+    },
+    {
+      "file": "03_modern_40x60_ground_floor.jpg",
+      "unit_system": "imperial",
+      "total_area": "2400 SF",
+      "overall_dimensions": {
+        "width": "60'-0\"",
+        "height": "40'-0\""
+      },
+      "rooms": [
+        {"name": "Master Bathroom", "area_m2": null, "dimensions": "15 x 8"},
+        {"name": "Master Bedroom", "area_m2": null, "dimensions": "15 x 11"},
+        {"name": "Kitchen / Dining", "area_m2": null, "dimensions": "18 x 21"},
+        {"name": "Bedroom #3", "area_m2": null, "dimensions": "12 x 16"},
+        {"name": "Walk-in Closet", "area_m2": null, "dimensions": "7 x 8"},
+        {"name": "Bathroom", "area_m2": null, "dimensions": "7 x 5"},
+        {"name": "Bathroom", "area_m2": null, "dimensions": "5 x 12"},
+        {"name": "Laundry", "area_m2": null, "dimensions": "12 x 9"},
+        {"name": "Office / Bedroom", "area_m2": null, "dimensions": "12 x 11"},
+        {"name": "Living Room", "area_m2": null, "dimensions": "20 x 21"},
+        {"name": "Bedroom #2", "area_m2": null, "dimensions": "16 x 16"},
+        {"name": "Porch", "area_m2": null, "dimensions": "6 x 21"}
+      ],
+      "room_count": 12,
+      "notes": "Modern open floor plan. Dimensions given as simple numbers (feet assumed). Good for testing dimension extraction."
+    },
+    {
+      "file": "07_arcsite_30x40_3bed.webp",
+      "unit_system": "imperial",
+      "total_area": null,
+      "overall_dimensions": {
+        "width": "40'",
+        "height": "30'"
+      },
+      "rooms": [
+        {"name": "Bedroom #2", "area_m2": null, "dimensions": "9'-0\" x 12'-0\""},
+        {"name": "Bedroom #3", "area_m2": null, "dimensions": "9'-0\" x 12'-0\""},
+        {"name": "Master Bedroom", "area_m2": null, "dimensions": "12'-8\" x 12'-0\""},
+        {"name": "Family Room", "area_m2": null, "dimensions": "15'-0\" x 16'-4\""},
+        {"name": "Dining Area", "area_m2": null, "dimensions": "9'-0\" x 16'-4\""},
+        {"name": "Kitchen", "area_m2": null, "dimensions": "8'-6\" x 16'-4\""},
+        {"name": "Closet", "area_m2": null, "dimensions": "6'-0\" x 7'-0\""},
+        {"name": "Washroom", "area_m2": null, "dimensions": null}
+      ],
+      "room_count": 8,
+      "notes": "Clean architectural drawing with clear labels. Good baseline test case."
+    },
+    {
+      "file": "14_roomsketcher_1bed_apartment.jpg",
+      "unit_system": "imperial",
+      "total_area": null,
+      "overall_dimensions": {
+        "width": "26'-11\"",
+        "height": "24'-1\""
+      },
+      "rooms": [
+        {"name": "Kitchen/Living", "area_sqft": 259, "dimensions": null},
+        {"name": "Bedroom", "area_sqft": 131, "dimensions": null}
+      ],
+      "room_count": 2,
+      "notes": "Simple apartment layout with square footage labels. Good for testing area extraction."
+    }
+  ]
+}
