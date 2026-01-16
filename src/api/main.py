@@ -377,7 +377,7 @@ async def full_analysis(
             # Step 1: Parse the blueprint
             analysis = parser.parse(tmp_path)
             
-                rooms = [
+            rooms = [
                 RoomData(
                     name=room.name,
                     width=room.width,
