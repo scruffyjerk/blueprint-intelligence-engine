@@ -198,15 +198,15 @@ async def parse_blueprint(file: UploadFile = File(...)):
             # Parse the blueprint
             analysis = parser.parse(tmp_path)
             
-            # Convert to response model
+                        # Convert to response model
             rooms = [
                 RoomData(
-                    name=room.get('name', 'Unknown'),
-                    width=room.get('width'),
-                    length=room.get('length'),
-                    area=room.get('area'),
-                    unit=room.get('unit', 'imperial'),
-                    confidence=room.get('confidence', 'medium')
+                    name=room.name,
+                    width=room.width,
+                    length=room.length,
+                    area=room.area,
+                    unit=room.unit,
+                    confidence=room.confidence
                 )
                 for room in analysis.rooms
             ]
