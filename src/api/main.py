@@ -460,10 +460,10 @@ async def full_analysis(
             # Step 4: Quality tier comparison
             comparisons = compare_quality_tiers(totals, reg)
             quality_comparison = QualityComparisonResponse(
-                budget=comparisons[QualityTier.BUDGET].total_estimate,
-                standard=comparisons[QualityTier.STANDARD].total_estimate,
-                premium=comparisons[QualityTier.PREMIUM].total_estimate,
-                luxury=comparisons[QualityTier.LUXURY].total_estimate
+                budget=comparisons['budget'],
+                standard=comparisons['standard'],
+                premium=comparisons['premium'],
+                luxury=comparisons['luxury']
             )
             
             return FullAnalysisResponse(
