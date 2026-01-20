@@ -16,6 +16,16 @@ class UnitSystem(Enum):
     IMPERIAL = "imperial"
 
 
+class RoomType(Enum):
+    """Room types for category-specific calculations."""
+    KITCHEN = "kitchen"
+    BATHROOM = "bathroom"
+    BEDROOM = "bedroom"
+    LIVING_ROOM = "living_room"
+    DINING_ROOM = "dining_room"
+    OTHER = "other"
+
+
 @dataclass
 class Dimensions:
     """Standardized dimensions in both metric and imperial."""
@@ -60,10 +70,51 @@ class MaterialQuantity:
     material_type: str
     quantity: float
     unit: str
-    coverage_per_unit: float
-    units_needed: int
-    waste_factor: float
+    coverage_per_unit: float = 1.0
+    units_needed: int = 1
+    waste_factor: float = 0.0
     notes: str = ""
+    category: str = "general"
+    room_type: str = ""
+
+
+class RoomTypeDetector:
+    """Detect room type from room name."""
+    
+    KITCHEN_KEYWORDS = ['kitchen', 'kitchenette', 'galley']
+    BATHROOM_KEYWORDS = ['bathroom', 'bath', 'restroom', 'powder room', 'half bath', 
+                         'full bath', 'master bath', 'ensuite', 'wc', 'lavatory']
+    BEDROOM_KEYWORDS = ['bedroom', 'master bedroom', 'guest room', 'nursery']
+    LIVING_KEYWORDS = ['living room', 'living area', 'family room', 'great room', 
+                       'sitting room', 'den', 'lounge']
+    DINING_KEYWORDS = ['dining room', 'dining area', 'breakfast nook', 'eat-in']
+    
+    @classmethod
+    def detect(cls, room_name: str) -> RoomType:
+        """Detect room type from room name."""
+        name_lower = room_name.lower().strip()
+        
+        for keyword in cls.KITCHEN_KEYWORDS:
+            if keyword in name_lower:
+                return RoomType.KITCHEN
+        
+        for keyword in cls.BATHROOM_KEYWORDS:
+            if keyword in name_lower:
+                return RoomType.BATHROOM
+        
+        for keyword in cls.BEDROOM_KEYWORDS:
+            if keyword in name_lower:
+                return RoomType.BEDROOM
+        
+        for keyword in cls.LIVING_KEYWORDS:
+            if keyword in name_lower:
+                return RoomType.LIVING_ROOM
+        
+        for keyword in cls.DINING_KEYWORDS:
+            if keyword in name_lower:
+                return RoomType.DINING_ROOM
+        
+        return RoomType.OTHER
 
 
 class DimensionParser:
@@ -138,36 +189,44 @@ class MaterialCalculator:
     
     # Material coverage rates (how much area one unit covers)
     MATERIAL_SPECS = {
+        # ==================== FLOORING ====================
         "flooring_hardwood": {
             "name": "Hardwood Flooring",
             "coverage_per_unit": 2.23,  # m² per box (24 sq ft)
             "unit": "box",
             "waste_factor": 0.10,  # 10% waste
+            "category": "flooring",
         },
         "flooring_laminate": {
             "name": "Laminate Flooring",
             "coverage_per_unit": 2.32,  # m² per box (25 sq ft)
             "unit": "box",
             "waste_factor": 0.10,
+            "category": "flooring",
         },
         "flooring_tile": {
             "name": "Ceramic Tile",
             "coverage_per_unit": 0.93,  # m² per box (10 sq ft)
             "unit": "box",
             "waste_factor": 0.15,  # 15% waste for cutting
+            "category": "flooring",
         },
         "flooring_carpet": {
             "name": "Carpet",
             "coverage_per_unit": 11.15,  # m² per roll (12 ft x 10 ft)
             "unit": "roll",
             "waste_factor": 0.10,
+            "category": "flooring",
         },
+        
+        # ==================== PAINT ====================
         "paint_wall": {
             "name": "Wall Paint",
             "coverage_per_unit": 37.16,  # m² per gallon (400 sq ft)
             "unit": "gallon",
             "waste_factor": 0.05,
             "coats": 2,
+            "category": "paint",
         },
         "paint_ceiling": {
             "name": "Ceiling Paint",
@@ -175,25 +234,33 @@ class MaterialCalculator:
             "unit": "gallon",
             "waste_factor": 0.05,
             "coats": 1,
+            "category": "paint",
         },
+        
+        # ==================== DRYWALL ====================
         "drywall": {
             "name": "Drywall Sheets",
             "coverage_per_unit": 2.97,  # m² per 4x8 sheet
             "unit": "sheet",
             "waste_factor": 0.10,
+            "category": "drywall",
         },
         "insulation_batt": {
             "name": "Batt Insulation",
             "coverage_per_unit": 8.92,  # m² per bundle (96 sq ft)
             "unit": "bundle",
             "waste_factor": 0.05,
+            "category": "insulation",
         },
+        
+        # ==================== TRIM ====================
         "baseboard": {
             "name": "Baseboard Trim",
             "coverage_per_unit": 2.44,  # m per piece (8 ft)
             "unit": "piece",
             "waste_factor": 0.10,
             "is_linear": True,
+            "category": "trim",
         },
         "crown_molding": {
             "name": "Crown Molding",
@@ -201,6 +268,126 @@ class MaterialCalculator:
             "unit": "piece",
             "waste_factor": 0.15,
             "is_linear": True,
+            "category": "trim",
+        },
+        
+        # ==================== KITCHEN ====================
+        "cabinets_base": {
+            "name": "Base Cabinets",
+            "coverage_per_unit": 0.3048,  # m per linear ft (1 ft)
+            "unit": "linear ft",
+            "waste_factor": 0.0,
+            "is_linear": True,
+            "category": "kitchen",
+        },
+        "cabinets_wall": {
+            "name": "Wall Cabinets",
+            "coverage_per_unit": 0.3048,  # m per linear ft (1 ft)
+            "unit": "linear ft",
+            "waste_factor": 0.0,
+            "is_linear": True,
+            "category": "kitchen",
+        },
+        "countertop_laminate": {
+            "name": "Laminate Countertop",
+            "coverage_per_unit": 0.0929,  # m² per sq ft
+            "unit": "sq ft",
+            "waste_factor": 0.10,
+            "category": "kitchen",
+        },
+        "countertop_granite": {
+            "name": "Granite Countertop",
+            "coverage_per_unit": 0.0929,  # m² per sq ft
+            "unit": "sq ft",
+            "waste_factor": 0.10,
+            "category": "kitchen",
+        },
+        "countertop_quartz": {
+            "name": "Quartz Countertop",
+            "coverage_per_unit": 0.0929,  # m² per sq ft
+            "unit": "sq ft",
+            "waste_factor": 0.10,
+            "category": "kitchen",
+        },
+        "backsplash_tile": {
+            "name": "Tile Backsplash",
+            "coverage_per_unit": 0.0929,  # m² per sq ft
+            "unit": "sq ft",
+            "waste_factor": 0.15,
+            "category": "kitchen",
+        },
+        "kitchen_sink": {
+            "name": "Kitchen Sink",
+            "coverage_per_unit": 1,
+            "unit": "unit",
+            "waste_factor": 0.0,
+            "is_fixture": True,
+            "category": "kitchen",
+        },
+        "kitchen_faucet": {
+            "name": "Kitchen Faucet",
+            "coverage_per_unit": 1,
+            "unit": "unit",
+            "waste_factor": 0.0,
+            "is_fixture": True,
+            "category": "kitchen",
+        },
+        
+        # ==================== BATHROOM ====================
+        "vanity_cabinet": {
+            "name": "Bathroom Vanity",
+            "coverage_per_unit": 1,
+            "unit": "unit",
+            "waste_factor": 0.0,
+            "is_fixture": True,
+            "category": "bathroom",
+        },
+        "toilet": {
+            "name": "Toilet",
+            "coverage_per_unit": 1,
+            "unit": "unit",
+            "waste_factor": 0.0,
+            "is_fixture": True,
+            "category": "bathroom",
+        },
+        "bathroom_faucet": {
+            "name": "Bathroom Faucet",
+            "coverage_per_unit": 1,
+            "unit": "unit",
+            "waste_factor": 0.0,
+            "is_fixture": True,
+            "category": "bathroom",
+        },
+        "shower_tile": {
+            "name": "Shower/Tub Tile",
+            "coverage_per_unit": 0.0929,  # m² per sq ft
+            "unit": "sq ft",
+            "waste_factor": 0.15,
+            "category": "bathroom",
+        },
+        "shower_door": {
+            "name": "Shower Door",
+            "coverage_per_unit": 1,
+            "unit": "unit",
+            "waste_factor": 0.0,
+            "is_fixture": True,
+            "category": "bathroom",
+        },
+        "bathtub": {
+            "name": "Bathtub",
+            "coverage_per_unit": 1,
+            "unit": "unit",
+            "waste_factor": 0.0,
+            "is_fixture": True,
+            "category": "bathroom",
+        },
+        "bathroom_exhaust_fan": {
+            "name": "Exhaust Fan",
+            "coverage_per_unit": 1,
+            "unit": "unit",
+            "waste_factor": 0.0,
+            "is_fixture": True,
+            "category": "bathroom",
         },
     }
     
@@ -248,38 +435,105 @@ class MaterialCalculator:
             wall_area_m2 = 4 * side * self.ceiling_height_m
             perimeter_m = 4 * side
         
+        # Detect room type
+        room_name = room_data.get('name', '')
+        room_type = RoomTypeDetector.detect(room_name)
+        
         results = {}
+        
+        # ==================== GENERAL MATERIALS (all rooms) ====================
         
         # Calculate flooring options
         for flooring_type in ['flooring_hardwood', 'flooring_laminate', 'flooring_tile', 'flooring_carpet']:
             results[flooring_type] = self._calculate_material(
-                flooring_type, floor_area_m2
+                flooring_type, floor_area_m2, room_type.value
             )
         
         # Calculate paint
         results['paint_wall'] = self._calculate_material(
-            'paint_wall', wall_area_m2
+            'paint_wall', wall_area_m2, room_type.value
         )
         results['paint_ceiling'] = self._calculate_material(
-            'paint_ceiling', floor_area_m2
+            'paint_ceiling', floor_area_m2, room_type.value
         )
         
         # Calculate drywall (walls only, assuming ceiling exists)
         results['drywall'] = self._calculate_material(
-            'drywall', wall_area_m2
+            'drywall', wall_area_m2, room_type.value
         )
         
         # Calculate trim (linear measurements)
         results['baseboard'] = self._calculate_linear_material(
-            'baseboard', perimeter_m
+            'baseboard', perimeter_m, room_type.value
         )
         results['crown_molding'] = self._calculate_linear_material(
-            'crown_molding', perimeter_m
+            'crown_molding', perimeter_m, room_type.value
         )
+        
+        # ==================== KITCHEN-SPECIFIC MATERIALS ====================
+        if room_type == RoomType.KITCHEN:
+            # Estimate cabinet run = ~60% of perimeter for base, ~40% for wall
+            base_cabinet_run_m = perimeter_m * 0.60
+            wall_cabinet_run_m = perimeter_m * 0.40
+            
+            results['cabinets_base'] = self._calculate_linear_material(
+                'cabinets_base', base_cabinet_run_m, room_type.value
+            )
+            results['cabinets_wall'] = self._calculate_linear_material(
+                'cabinets_wall', wall_cabinet_run_m, room_type.value
+            )
+            
+            # Countertop area = base cabinet run * 25" depth (0.635m)
+            countertop_area_m2 = base_cabinet_run_m * 0.635
+            results['countertop_quartz'] = self._calculate_material(
+                'countertop_quartz', countertop_area_m2, room_type.value
+            )
+            
+            # Backsplash area = base cabinet run * 18" height (0.457m)
+            backsplash_area_m2 = base_cabinet_run_m * 0.457
+            results['backsplash_tile'] = self._calculate_material(
+                'backsplash_tile', backsplash_area_m2, room_type.value
+            )
+            
+            # Fixtures (1 each per kitchen)
+            results['kitchen_sink'] = self._calculate_fixture('kitchen_sink', 1, room_type.value)
+            results['kitchen_faucet'] = self._calculate_fixture('kitchen_faucet', 1, room_type.value)
+        
+        # ==================== BATHROOM-SPECIFIC MATERIALS ====================
+        if room_type == RoomType.BATHROOM:
+            # Determine bathroom type based on size
+            is_full_bath = floor_area_m2 > 4.0  # > ~43 sq ft
+            is_large_bath = floor_area_m2 > 7.0  # > ~75 sq ft
+            
+            # Vanity (1 per bathroom)
+            results['vanity_cabinet'] = self._calculate_fixture('vanity_cabinet', 1, room_type.value)
+            results['bathroom_faucet'] = self._calculate_fixture('bathroom_faucet', 1, room_type.value)
+            
+            # Toilet (1 per bathroom)
+            results['toilet'] = self._calculate_fixture('toilet', 1, room_type.value)
+            
+            # Exhaust fan (1 per bathroom)
+            results['bathroom_exhaust_fan'] = self._calculate_fixture('bathroom_exhaust_fan', 1, room_type.value)
+            
+            if is_full_bath:
+                # Shower/tub tile - estimate 60 sq ft for standard shower surround
+                shower_tile_area_m2 = 5.57  # ~60 sq ft
+                results['shower_tile'] = self._calculate_material(
+                    'shower_tile', shower_tile_area_m2, room_type.value
+                )
+                
+                # Shower door or bathtub
+                if is_large_bath:
+                    # Large bath might have separate shower and tub
+                    results['shower_door'] = self._calculate_fixture('shower_door', 1, room_type.value)
+                    results['bathtub'] = self._calculate_fixture('bathtub', 1, room_type.value)
+                else:
+                    # Standard full bath - tub/shower combo
+                    results['bathtub'] = self._calculate_fixture('bathtub', 1, room_type.value)
         
         return results
     
-    def _calculate_material(self, material_type: str, area_m2: float) -> MaterialQuantity:
+    def _calculate_material(self, material_type: str, area_m2: float, room_type: str = "") -> MaterialQuantity:
         """Calculate quantity for area-based materials."""
         spec = self.MATERIAL_SPECS[material_type]
         
@@ -301,11 +555,13 @@ class MaterialCalculator:
             coverage_per_unit=spec['coverage_per_unit'],
             units_needed=units_needed_rounded,
             waste_factor=spec['waste_factor'],
-            notes=f"Covers {area_m2:.1f} m² ({area_m2 * 10.7639:.0f} sq ft)"
+            notes=f"Covers {area_m2:.1f} m² ({area_m2 * 10.7639:.0f} sq ft)",
+            category=spec.get('category', 'general'),
+            room_type=room_type
         )
     
-    def _calculate_linear_material(self, material_type: str, length_m: float) -> MaterialQuantity:
-        """Calculate quantity for linear materials (trim, molding)."""
+    def _calculate_linear_material(self, material_type: str, length_m: float, room_type: str = "") -> MaterialQuantity:
+        """Calculate quantity for linear materials (trim, molding, cabinets)."""
         spec = self.MATERIAL_SPECS[material_type]
         
         # Apply waste factor
@@ -322,7 +578,25 @@ class MaterialCalculator:
             coverage_per_unit=spec['coverage_per_unit'],
             units_needed=units_needed_rounded,
             waste_factor=spec['waste_factor'],
-            notes=f"Covers {length_m:.1f} m ({length_m * 3.28084:.0f} ft) perimeter"
+            notes=f"Covers {length_m:.1f} m ({length_m * 3.28084:.0f} ft)",
+            category=spec.get('category', 'general'),
+            room_type=room_type
+        )
+    
+    def _calculate_fixture(self, material_type: str, count: int, room_type: str = "") -> MaterialQuantity:
+        """Calculate quantity for fixtures (unit-based items)."""
+        spec = self.MATERIAL_SPECS[material_type]
+        
+        return MaterialQuantity(
+            material_type=spec['name'],
+            quantity=count,
+            unit=spec['unit'],
+            coverage_per_unit=1,
+            units_needed=count,
+            waste_factor=0.0,
+            notes=f"{count} unit(s)",
+            category=spec.get('category', 'general'),
+            room_type=room_type
         )
     
     def calculate_from_blueprint(self, blueprint_analysis: dict) -> Dict[str, Dict[str, MaterialQuantity]]:
@@ -366,7 +640,8 @@ class MaterialCalculator:
                         unit=quantity.unit,
                         coverage_per_unit=quantity.coverage_per_unit,
                         units_needed=0,
-                        waste_factor=quantity.waste_factor
+                        waste_factor=quantity.waste_factor,
+                        category=quantity.category
                     )
                 
                 totals[material_type].quantity += quantity.quantity
@@ -374,8 +649,11 @@ class MaterialCalculator:
         
         # Update notes with totals
         for material_type, total in totals.items():
-            if 'baseboard' in material_type or 'molding' in material_type:
+            spec = self.MATERIAL_SPECS.get(material_type, {})
+            if spec.get('is_linear'):
                 total.notes = f"Total: {total.quantity:.1f} m ({total.quantity * 3.28084:.0f} ft)"
+            elif spec.get('is_fixture'):
+                total.notes = f"Total: {total.units_needed} unit(s)"
             else:
                 total.notes = f"Total: {total.quantity:.1f} m² ({total.quantity * 10.7639:.0f} sq ft)"
         
@@ -397,19 +675,30 @@ def format_material_report(totals: Dict[str, MaterialQuantity], unit_system: str
         "Paint": ['paint_wall', 'paint_ceiling'],
         "Drywall": ['drywall'],
         "Trim": ['baseboard', 'crown_molding'],
+        "Kitchen": ['cabinets_base', 'cabinets_wall', 'countertop_laminate', 'countertop_granite', 
+                   'countertop_quartz', 'backsplash_tile', 'kitchen_sink', 'kitchen_faucet'],
+        "Bathroom": ['vanity_cabinet', 'toilet', 'bathroom_faucet', 'shower_tile', 
+                    'shower_door', 'bathtub', 'bathroom_exhaust_fan'],
     }
     
-    for category, material_types in categories.items():
-        lines.append(f"\n{category}")
+    for category_name, material_keys in categories.items():
+        category_items = [(k, totals[k]) for k in material_keys if k in totals]
+        if not category_items:
+            continue
+        
+        lines.append(f"\n{category_name}")
         lines.append("-" * 40)
         
-        for material_type in material_types:
-            if material_type in totals:
-                mat = totals[material_type]
-                lines.append(f"  {mat.material_type}:")
-                lines.append(f"    Quantity needed: {mat.units_needed} {mat.unit}(s)")
-                lines.append(f"    {mat.notes}")
-    
-    lines.append("\n" + "=" * 60)
+        for key, qty in category_items:
+            if unit_system == "imperial":
+                if qty.unit in ['box', 'roll', 'sheet', 'bundle', 'piece', 'gallon', 'unit', 'linear ft', 'sq ft']:
+                    lines.append(f"  {qty.material_type}: {qty.units_needed} {qty.unit}")
+                else:
+                    lines.append(f"  {qty.material_type}: {qty.units_needed} {qty.unit}")
+            else:
+                lines.append(f"  {qty.material_type}: {qty.units_needed} {qty.unit}")
+            
+            if qty.notes:
+                lines.append(f"    ({qty.notes})")
     
     return "\n".join(lines)

@@ -31,6 +31,16 @@ class Region(Enum):
     US_WEST = "us_west"
 
 
+class RoomType(Enum):
+    """Room types for category-specific calculations."""
+    KITCHEN = "kitchen"
+    BATHROOM = "bathroom"
+    BEDROOM = "bedroom"
+    LIVING_ROOM = "living_room"
+    DINING_ROOM = "dining_room"
+    OTHER = "other"
+
+
 @dataclass
 class PricePoint:
     """Price information for a material at a specific quality tier."""
@@ -49,6 +59,7 @@ class MaterialPricing:
     price_points: Dict[QualityTier, PricePoint] = field(default_factory=dict)
     labor_rate_per_unit: float = 0.0  # Labor cost per unit installed
     labor_unit: str = "sq ft"
+    category: str = "general"  # Category for grouping (flooring, kitchen, bathroom, etc.)
 
 
 @dataclass
@@ -65,6 +76,7 @@ class CostEstimate:
     price_per_unit: float
     brand_example: str = ""
     notes: str = ""
+    category: str = "general"
 
 
 @dataclass
@@ -92,6 +104,7 @@ class PricingDatabase:
     
     # Material pricing data
     PRICING_DATA: Dict[str, MaterialPricing] = {
+        # ==================== FLOORING ====================
         "flooring_hardwood": MaterialPricing(
             material_type="flooring_hardwood",
             display_name="Hardwood Flooring",
@@ -101,8 +114,9 @@ class PricingDatabase:
                 QualityTier.PREMIUM: PricePoint(8.00, "sq ft", QualityTier.PREMIUM, "Shaw, Armstrong", "Premium species, lifetime warranty"),
                 QualityTier.LUXURY: PricePoint(15.00, "sq ft", QualityTier.LUXURY, "Carlisle, Duchateau", "Wide plank, exotic species"),
             },
-            labor_rate_per_unit=4.00,  # Per sq ft installed
-            labor_unit="sq ft"
+            labor_rate_per_unit=4.00,
+            labor_unit="sq ft",
+            category="flooring"
         ),
         "flooring_laminate": MaterialPricing(
             material_type="flooring_laminate",
@@ -114,7 +128,8 @@ class PricingDatabase:
                 QualityTier.LUXURY: PricePoint(6.00, "sq ft", QualityTier.LUXURY, "Kaindl, Kronotex", "Premium European"),
             },
             labor_rate_per_unit=2.50,
-            labor_unit="sq ft"
+            labor_unit="sq ft",
+            category="flooring"
         ),
         "flooring_tile": MaterialPricing(
             material_type="flooring_tile",
@@ -126,7 +141,8 @@ class PricingDatabase:
                 QualityTier.LUXURY: PricePoint(15.00, "sq ft", QualityTier.LUXURY, "Artistic Tile, Ann Sacks", "Designer, natural stone"),
             },
             labor_rate_per_unit=6.00,
-            labor_unit="sq ft"
+            labor_unit="sq ft",
+            category="flooring"
         ),
         "flooring_carpet": MaterialPricing(
             material_type="flooring_carpet",
@@ -138,8 +154,11 @@ class PricingDatabase:
                 QualityTier.LUXURY: PricePoint(12.00, "sq ft", QualityTier.LUXURY, "Stanton, Masland", "Wool, custom patterns"),
             },
             labor_rate_per_unit=1.50,
-            labor_unit="sq ft"
+            labor_unit="sq ft",
+            category="flooring"
         ),
+        
+        # ==================== PAINT ====================
         "paint_wall": MaterialPricing(
             material_type="paint_wall",
             display_name="Interior Wall Paint",
@@ -149,8 +168,9 @@ class PricingDatabase:
                 QualityTier.PREMIUM: PricePoint(65.00, "gallon", QualityTier.PREMIUM, "Benjamin Moore, Sherwin-Williams", "Designer colors, low VOC"),
                 QualityTier.LUXURY: PricePoint(100.00, "gallon", QualityTier.LUXURY, "Farrow & Ball, Fine Paints", "Artisan, specialty finishes"),
             },
-            labor_rate_per_unit=2.00,  # Per sq ft of wall
-            labor_unit="sq ft"
+            labor_rate_per_unit=2.00,
+            labor_unit="sq ft",
+            category="paint"
         ),
         "paint_ceiling": MaterialPricing(
             material_type="paint_ceiling",
@@ -162,8 +182,11 @@ class PricingDatabase:
                 QualityTier.LUXURY: PricePoint(80.00, "gallon", QualityTier.LUXURY, "Fine Paints of Europe", "Specialty ceiling"),
             },
             labor_rate_per_unit=1.50,
-            labor_unit="sq ft"
+            labor_unit="sq ft",
+            category="paint"
         ),
+        
+        # ==================== DRYWALL ====================
         "drywall": MaterialPricing(
             material_type="drywall",
             display_name="Drywall",
@@ -173,9 +196,12 @@ class PricingDatabase:
                 QualityTier.PREMIUM: PricePoint(25.00, "sheet", QualityTier.PREMIUM, "USG Mold Tough", "Mold/moisture resistant"),
                 QualityTier.LUXURY: PricePoint(40.00, "sheet", QualityTier.LUXURY, "QuietRock", "Soundproof drywall"),
             },
-            labor_rate_per_unit=2.00,  # Per sq ft (includes taping/mudding)
-            labor_unit="sq ft"
+            labor_rate_per_unit=2.00,
+            labor_unit="sq ft",
+            category="drywall"
         ),
+        
+        # ==================== TRIM ====================
         "baseboard": MaterialPricing(
             material_type="baseboard",
             display_name="Baseboard Trim",
@@ -186,7 +212,8 @@ class PricingDatabase:
                 QualityTier.LUXURY: PricePoint(10.00, "linear ft", QualityTier.LUXURY, "Custom millwork", "Custom profiles"),
             },
             labor_rate_per_unit=3.00,
-            labor_unit="linear ft"
+            labor_unit="linear ft",
+            category="trim"
         ),
         "crown_molding": MaterialPricing(
             material_type="crown_molding",
@@ -198,7 +225,211 @@ class PricingDatabase:
                 QualityTier.LUXURY: PricePoint(15.00, "linear ft", QualityTier.LUXURY, "Custom millwork", "Multi-piece crown"),
             },
             labor_rate_per_unit=5.00,
-            labor_unit="linear ft"
+            labor_unit="linear ft",
+            category="trim"
+        ),
+        
+        # ==================== KITCHEN CABINETS ====================
+        "cabinets_base": MaterialPricing(
+            material_type="cabinets_base",
+            display_name="Base Cabinets",
+            price_points={
+                QualityTier.BUDGET: PricePoint(75.00, "linear ft", QualityTier.BUDGET, "Hampton Bay, In-Stock", "Thermofoil, basic hardware"),
+                QualityTier.STANDARD: PricePoint(150.00, "linear ft", QualityTier.STANDARD, "KraftMaid, Diamond", "Plywood box, soft-close"),
+                QualityTier.PREMIUM: PricePoint(300.00, "linear ft", QualityTier.PREMIUM, "Wellborn, Medallion", "All-plywood, dovetail drawers"),
+                QualityTier.LUXURY: PricePoint(500.00, "linear ft", QualityTier.LUXURY, "Custom, Wood-Mode", "Custom built, premium wood"),
+            },
+            labor_rate_per_unit=50.00,
+            labor_unit="linear ft",
+            category="kitchen"
+        ),
+        "cabinets_wall": MaterialPricing(
+            material_type="cabinets_wall",
+            display_name="Wall Cabinets",
+            price_points={
+                QualityTier.BUDGET: PricePoint(65.00, "linear ft", QualityTier.BUDGET, "Hampton Bay, In-Stock", "Thermofoil, basic hardware"),
+                QualityTier.STANDARD: PricePoint(125.00, "linear ft", QualityTier.STANDARD, "KraftMaid, Diamond", "Plywood box, soft-close"),
+                QualityTier.PREMIUM: PricePoint(250.00, "linear ft", QualityTier.PREMIUM, "Wellborn, Medallion", "All-plywood, dovetail"),
+                QualityTier.LUXURY: PricePoint(450.00, "linear ft", QualityTier.LUXURY, "Custom, Wood-Mode", "Custom built, premium wood"),
+            },
+            labor_rate_per_unit=40.00,
+            labor_unit="linear ft",
+            category="kitchen"
+        ),
+        
+        # ==================== COUNTERTOPS ====================
+        "countertop_laminate": MaterialPricing(
+            material_type="countertop_laminate",
+            display_name="Laminate Countertop",
+            price_points={
+                QualityTier.BUDGET: PricePoint(15.00, "sq ft", QualityTier.BUDGET, "Formica, Wilsonart", "Basic patterns"),
+                QualityTier.STANDARD: PricePoint(25.00, "sq ft", QualityTier.STANDARD, "Formica 180fx", "Stone-look patterns"),
+                QualityTier.PREMIUM: PricePoint(40.00, "sq ft", QualityTier.PREMIUM, "Wilsonart HD", "Premium edge profiles"),
+                QualityTier.LUXURY: PricePoint(60.00, "sq ft", QualityTier.LUXURY, "Custom laminate", "Integrated backsplash"),
+            },
+            labor_rate_per_unit=10.00,
+            labor_unit="sq ft",
+            category="kitchen"
+        ),
+        "countertop_granite": MaterialPricing(
+            material_type="countertop_granite",
+            display_name="Granite Countertop",
+            price_points={
+                QualityTier.BUDGET: PricePoint(40.00, "sq ft", QualityTier.BUDGET, "Level 1 granite", "Builder grade, limited colors"),
+                QualityTier.STANDARD: PricePoint(60.00, "sq ft", QualityTier.STANDARD, "Level 2-3 granite", "Popular colors, eased edge"),
+                QualityTier.PREMIUM: PricePoint(85.00, "sq ft", QualityTier.PREMIUM, "Level 4-5 granite", "Exotic patterns, ogee edge"),
+                QualityTier.LUXURY: PricePoint(150.00, "sq ft", QualityTier.LUXURY, "Rare/exotic granite", "Book-matched, waterfall edge"),
+            },
+            labor_rate_per_unit=25.00,
+            labor_unit="sq ft",
+            category="kitchen"
+        ),
+        "countertop_quartz": MaterialPricing(
+            material_type="countertop_quartz",
+            display_name="Quartz Countertop",
+            price_points={
+                QualityTier.BUDGET: PricePoint(50.00, "sq ft", QualityTier.BUDGET, "MSI Q, Allen+Roth", "Basic colors"),
+                QualityTier.STANDARD: PricePoint(75.00, "sq ft", QualityTier.STANDARD, "Silestone, Cambria", "Popular patterns"),
+                QualityTier.PREMIUM: PricePoint(100.00, "sq ft", QualityTier.PREMIUM, "Caesarstone", "Premium veining"),
+                QualityTier.LUXURY: PricePoint(150.00, "sq ft", QualityTier.LUXURY, "Dekton, Neolith", "Ultra-premium, large format"),
+            },
+            labor_rate_per_unit=25.00,
+            labor_unit="sq ft",
+            category="kitchen"
+        ),
+        
+        # ==================== KITCHEN FIXTURES ====================
+        "backsplash_tile": MaterialPricing(
+            material_type="backsplash_tile",
+            display_name="Tile Backsplash",
+            price_points={
+                QualityTier.BUDGET: PricePoint(5.00, "sq ft", QualityTier.BUDGET, "Ceramic subway", "3x6 basic white"),
+                QualityTier.STANDARD: PricePoint(15.00, "sq ft", QualityTier.STANDARD, "Glass, porcelain", "Mosaic patterns"),
+                QualityTier.PREMIUM: PricePoint(30.00, "sq ft", QualityTier.PREMIUM, "Natural stone", "Marble, travertine"),
+                QualityTier.LUXURY: PricePoint(50.00, "sq ft", QualityTier.LUXURY, "Designer tile", "Handmade, artistic"),
+            },
+            labor_rate_per_unit=12.00,
+            labor_unit="sq ft",
+            category="kitchen"
+        ),
+        "kitchen_sink": MaterialPricing(
+            material_type="kitchen_sink",
+            display_name="Kitchen Sink",
+            price_points={
+                QualityTier.BUDGET: PricePoint(150.00, "unit", QualityTier.BUDGET, "Glacier Bay", "Stainless, drop-in"),
+                QualityTier.STANDARD: PricePoint(350.00, "unit", QualityTier.STANDARD, "Kraus, Elkay", "Undermount stainless"),
+                QualityTier.PREMIUM: PricePoint(600.00, "unit", QualityTier.PREMIUM, "Blanco, Kohler", "Composite, farmhouse"),
+                QualityTier.LUXURY: PricePoint(1200.00, "unit", QualityTier.LUXURY, "Rohl, Julien", "Fireclay, copper"),
+            },
+            labor_rate_per_unit=250.00,
+            labor_unit="unit",
+            category="kitchen"
+        ),
+        "kitchen_faucet": MaterialPricing(
+            material_type="kitchen_faucet",
+            display_name="Kitchen Faucet",
+            price_points={
+                QualityTier.BUDGET: PricePoint(80.00, "unit", QualityTier.BUDGET, "Glacier Bay, Peerless", "Basic pull-down"),
+                QualityTier.STANDARD: PricePoint(200.00, "unit", QualityTier.STANDARD, "Moen, Delta", "Pull-down, spot-resist"),
+                QualityTier.PREMIUM: PricePoint(400.00, "unit", QualityTier.PREMIUM, "Kohler, Grohe", "Touchless, pro-style"),
+                QualityTier.LUXURY: PricePoint(800.00, "unit", QualityTier.LUXURY, "Brizo, Waterstone", "Designer, articulating"),
+            },
+            labor_rate_per_unit=150.00,
+            labor_unit="unit",
+            category="kitchen"
+        ),
+        
+        # ==================== BATHROOM VANITY & FIXTURES ====================
+        "vanity_cabinet": MaterialPricing(
+            material_type="vanity_cabinet",
+            display_name="Bathroom Vanity",
+            price_points={
+                QualityTier.BUDGET: PricePoint(200.00, "unit", QualityTier.BUDGET, "Glacier Bay", "24-36\" basic"),
+                QualityTier.STANDARD: PricePoint(500.00, "unit", QualityTier.STANDARD, "Home Decorators", "36-48\" with top"),
+                QualityTier.PREMIUM: PricePoint(1200.00, "unit", QualityTier.PREMIUM, "James Martin", "48-60\" furniture style"),
+                QualityTier.LUXURY: PricePoint(2500.00, "unit", QualityTier.LUXURY, "Custom, RH", "60\"+ custom"),
+            },
+            labor_rate_per_unit=300.00,
+            labor_unit="unit",
+            category="bathroom"
+        ),
+        "toilet": MaterialPricing(
+            material_type="toilet",
+            display_name="Toilet",
+            price_points={
+                QualityTier.BUDGET: PricePoint(150.00, "unit", QualityTier.BUDGET, "Glacier Bay, Project Source", "Round, basic"),
+                QualityTier.STANDARD: PricePoint(300.00, "unit", QualityTier.STANDARD, "American Standard, Kohler", "Elongated, comfort height"),
+                QualityTier.PREMIUM: PricePoint(500.00, "unit", QualityTier.PREMIUM, "Toto, Kohler", "One-piece, soft-close"),
+                QualityTier.LUXURY: PricePoint(1500.00, "unit", QualityTier.LUXURY, "Toto Neorest, Kohler Veil", "Bidet, smart toilet"),
+            },
+            labor_rate_per_unit=200.00,
+            labor_unit="unit",
+            category="bathroom"
+        ),
+        "bathroom_faucet": MaterialPricing(
+            material_type="bathroom_faucet",
+            display_name="Bathroom Faucet",
+            price_points={
+                QualityTier.BUDGET: PricePoint(50.00, "unit", QualityTier.BUDGET, "Glacier Bay", "Single-handle chrome"),
+                QualityTier.STANDARD: PricePoint(150.00, "unit", QualityTier.STANDARD, "Moen, Delta", "Widespread, brushed nickel"),
+                QualityTier.PREMIUM: PricePoint(350.00, "unit", QualityTier.PREMIUM, "Kohler, Grohe", "Designer finishes"),
+                QualityTier.LUXURY: PricePoint(700.00, "unit", QualityTier.LUXURY, "Brizo, Waterworks", "Unlacquered brass, wall-mount"),
+            },
+            labor_rate_per_unit=125.00,
+            labor_unit="unit",
+            category="bathroom"
+        ),
+        "shower_tile": MaterialPricing(
+            material_type="shower_tile",
+            display_name="Shower/Tub Tile",
+            price_points={
+                QualityTier.BUDGET: PricePoint(4.00, "sq ft", QualityTier.BUDGET, "Ceramic subway", "Basic white 4x12"),
+                QualityTier.STANDARD: PricePoint(10.00, "sq ft", QualityTier.STANDARD, "Porcelain, glass accent", "Large format"),
+                QualityTier.PREMIUM: PricePoint(20.00, "sq ft", QualityTier.PREMIUM, "Natural stone", "Marble, slate"),
+                QualityTier.LUXURY: PricePoint(40.00, "sq ft", QualityTier.LUXURY, "Designer tile", "Zellige, handmade"),
+            },
+            labor_rate_per_unit=15.00,
+            labor_unit="sq ft",
+            category="bathroom"
+        ),
+        "shower_door": MaterialPricing(
+            material_type="shower_door",
+            display_name="Shower Door/Enclosure",
+            price_points={
+                QualityTier.BUDGET: PricePoint(300.00, "unit", QualityTier.BUDGET, "Delta, Sterling", "Framed sliding"),
+                QualityTier.STANDARD: PricePoint(600.00, "unit", QualityTier.STANDARD, "DreamLine", "Semi-frameless pivot"),
+                QualityTier.PREMIUM: PricePoint(1200.00, "unit", QualityTier.PREMIUM, "Kohler, Basco", "Frameless, clear glass"),
+                QualityTier.LUXURY: PricePoint(2500.00, "unit", QualityTier.LUXURY, "Custom glass", "Custom frameless, hardware"),
+            },
+            labor_rate_per_unit=350.00,
+            labor_unit="unit",
+            category="bathroom"
+        ),
+        "bathtub": MaterialPricing(
+            material_type="bathtub",
+            display_name="Bathtub",
+            price_points={
+                QualityTier.BUDGET: PricePoint(200.00, "unit", QualityTier.BUDGET, "Bootz, American Standard", "Steel alcove"),
+                QualityTier.STANDARD: PricePoint(500.00, "unit", QualityTier.STANDARD, "Kohler, American Standard", "Acrylic alcove"),
+                QualityTier.PREMIUM: PricePoint(1500.00, "unit", QualityTier.PREMIUM, "Kohler, Jacuzzi", "Freestanding acrylic"),
+                QualityTier.LUXURY: PricePoint(4000.00, "unit", QualityTier.LUXURY, "Victoria + Albert, MTI", "Cast iron, stone resin"),
+            },
+            labor_rate_per_unit=500.00,
+            labor_unit="unit",
+            category="bathroom"
+        ),
+        "bathroom_exhaust_fan": MaterialPricing(
+            material_type="bathroom_exhaust_fan",
+            display_name="Exhaust Fan",
+            price_points={
+                QualityTier.BUDGET: PricePoint(30.00, "unit", QualityTier.BUDGET, "Broan, NuTone", "Basic 50 CFM"),
+                QualityTier.STANDARD: PricePoint(100.00, "unit", QualityTier.STANDARD, "Panasonic WhisperCeiling", "80 CFM, quiet"),
+                QualityTier.PREMIUM: PricePoint(200.00, "unit", QualityTier.PREMIUM, "Panasonic WhisperGreen", "110 CFM, humidity sensor"),
+                QualityTier.LUXURY: PricePoint(400.00, "unit", QualityTier.LUXURY, "Panasonic WhisperWarm", "Fan + heater + light"),
+            },
+            labor_rate_per_unit=150.00,
+            labor_unit="unit",
+            category="bathroom"
         ),
     }
     
@@ -221,6 +452,60 @@ class PricingDatabase:
     def get_regional_multiplier(cls, region: Region) -> float:
         """Get the price adjustment multiplier for a region."""
         return cls.REGIONAL_ADJUSTMENTS.get(region, 1.0)
+    
+    @classmethod
+    def get_materials_by_category(cls, category: str) -> Dict[str, MaterialPricing]:
+        """Get all materials in a specific category."""
+        return {k: v for k, v in cls.PRICING_DATA.items() if v.category == category}
+    
+    @classmethod
+    def get_kitchen_materials(cls) -> Dict[str, MaterialPricing]:
+        """Get all kitchen-specific materials."""
+        return cls.get_materials_by_category("kitchen")
+    
+    @classmethod
+    def get_bathroom_materials(cls) -> Dict[str, MaterialPricing]:
+        """Get all bathroom-specific materials."""
+        return cls.get_materials_by_category("bathroom")
+
+
+class RoomTypeDetector:
+    """Detect room type from room name."""
+    
+    KITCHEN_KEYWORDS = ['kitchen', 'kitchenette', 'galley']
+    BATHROOM_KEYWORDS = ['bathroom', 'bath', 'restroom', 'powder room', 'half bath', 
+                         'full bath', 'master bath', 'ensuite', 'wc', 'lavatory']
+    BEDROOM_KEYWORDS = ['bedroom', 'master bedroom', 'guest room', 'nursery']
+    LIVING_KEYWORDS = ['living room', 'living area', 'family room', 'great room', 
+                       'sitting room', 'den', 'lounge']
+    DINING_KEYWORDS = ['dining room', 'dining area', 'breakfast nook', 'eat-in']
+    
+    @classmethod
+    def detect(cls, room_name: str) -> RoomType:
+        """Detect room type from room name."""
+        name_lower = room_name.lower().strip()
+        
+        for keyword in cls.KITCHEN_KEYWORDS:
+            if keyword in name_lower:
+                return RoomType.KITCHEN
+        
+        for keyword in cls.BATHROOM_KEYWORDS:
+            if keyword in name_lower:
+                return RoomType.BATHROOM
+        
+        for keyword in cls.BEDROOM_KEYWORDS:
+            if keyword in name_lower:
+                return RoomType.BEDROOM
+        
+        for keyword in cls.LIVING_KEYWORDS:
+            if keyword in name_lower:
+                return RoomType.LIVING_ROOM
+        
+        for keyword in cls.DINING_KEYWORDS:
+            if keyword in name_lower:
+                return RoomType.DINING_ROOM
+        
+        return RoomType.OTHER
 
 
 class CostEstimator:
@@ -284,8 +569,10 @@ class CostEstimator:
             # Convert quantity to labor units (sq ft or linear ft)
             if pricing.labor_unit == "sq ft":
                 labor_area = quantity.quantity * 10.7639  # m² to sq ft
-            else:  # linear ft
+            elif pricing.labor_unit == "linear ft":
                 labor_area = quantity.quantity * 3.28084  # m to ft
+            else:  # unit-based (fixtures)
+                labor_area = quantity.units_needed
             
             labor_cost = labor_area * pricing.labor_rate_per_unit * self.regional_multiplier
         
@@ -302,7 +589,67 @@ class CostEstimator:
             total_cost=round(total_cost, 2),
             price_per_unit=price_point.price_per_unit,
             brand_example=price_point.brand_example,
-            notes=price_point.notes
+            notes=price_point.notes,
+            category=pricing.category
+        )
+    
+    def estimate_fixture(
+        self,
+        material_key: str,
+        count: int = 1,
+        quality_tier: QualityTier = None
+    ) -> Optional[CostEstimate]:
+        """
+        Calculate cost estimate for a fixture (unit-based item).
+        
+        Args:
+            material_key: Key for the fixture (e.g., 'toilet', 'kitchen_sink')
+            count: Number of fixtures
+            quality_tier: Override quality tier (uses default if None)
+        
+        Returns:
+            CostEstimate or None if pricing not available
+        """
+        tier = quality_tier or self.quality_tier
+        pricing = PricingDatabase.get_pricing(material_key)
+        
+        if not pricing or tier not in pricing.price_points:
+            return None
+        
+        price_point = pricing.price_points[tier]
+        
+        # Calculate material cost
+        material_cost = count * price_point.price_per_unit * self.regional_multiplier
+        
+        # Calculate labor cost
+        labor_cost = 0.0
+        if self.include_labor:
+            labor_cost = count * pricing.labor_rate_per_unit * self.regional_multiplier
+        
+        total_cost = material_cost + labor_cost
+        
+        # Create a simple MaterialQuantity for fixtures
+        quantity = MaterialQuantity(
+            material_type=material_key,
+            quantity=count,
+            unit="unit",
+            units_needed=count,
+            waste_factor=1.0
+        )
+        
+        return CostEstimate(
+            material_type=material_key,
+            display_name=pricing.display_name,
+            quality_tier=tier,
+            units_needed=count,
+            unit="unit",
+            material_cost=round(material_cost, 2),
+            labor_cost=round(labor_cost, 2),
+            total_cost=round(total_cost, 2),
+            price_per_unit=price_point.price_per_unit,
+            brand_example=price_point.brand_example,
+            notes=price_point.notes,
+            category=pricing.category
         )
     
     def estimate_project(
@@ -352,115 +699,38 @@ class CostEstimator:
             subtotal_labor=round(subtotal_labor, 2),
             contingency_percent=self.contingency_percent,
             contingency_amount=round(contingency_amount, 2),
-            total_estimate=round(total_estimate, 2),
-            notes=[
-                f"Prices based on {self.region.value} averages",
-                f"Regional adjustment: {self.regional_multiplier:.0%}",
-                f"Quality tier: {self.quality_tier.value}",
-                "Actual costs may vary based on supplier and market conditions"
-            ]
+            total_estimate=round(total_estimate, 2)
         )
-
-
-def format_cost_report(estimate: ProjectEstimate) -> str:
-    """Format a project estimate as a readable report."""
-    lines = [
-        "=" * 70,
-        f"COST ESTIMATE: {estimate.project_name}",
-        "=" * 70,
-        f"Generated: {estimate.timestamp}",
-        f"Region: {estimate.region.value}",
-        "",
-        "-" * 70,
-        "MATERIAL BREAKDOWN",
-        "-" * 70,
-    ]
-    
-    for item in estimate.estimates:
-        lines.append(f"\n{item.display_name} ({item.quality_tier.value})")
-        lines.append(f"  Brand example: {item.brand_example}")
-        lines.append(f"  Quantity: {item.units_needed} {item.unit}(s) @ ${item.price_per_unit:.2f}/{item.unit}")
-        lines.append(f"  Material cost: ${item.material_cost:,.2f}")
-        if item.labor_cost > 0:
-            lines.append(f"  Labor cost: ${item.labor_cost:,.2f}")
-        lines.append(f"  Subtotal: ${item.total_cost:,.2f}")
-    
-    lines.extend([
-        "",
-        "-" * 70,
-        "SUMMARY",
-        "-" * 70,
-        f"  Materials subtotal: ${estimate.subtotal_materials:,.2f}",
-        f"  Labor subtotal: ${estimate.subtotal_labor:,.2f}",
-        f"  Contingency ({estimate.contingency_percent:.0%}): ${estimate.contingency_amount:,.2f}",
-        "",
-        f"  TOTAL ESTIMATE: ${estimate.total_estimate:,.2f}",
-        "",
-        "-" * 70,
-        "NOTES",
-        "-" * 70,
-    ])
-    
-    for note in estimate.notes:
-        lines.append(f"  • {note}")
-    
-    lines.append("=" * 70)
-    
-    return "\n".join(lines)
 
 
 def compare_quality_tiers(
     material_totals: Dict[str, MaterialQuantity],
-    region: Region = Region.US_NATIONAL
-) -> Dict[QualityTier, ProjectEstimate]:
+    region: Region = Region.US_NATIONAL,
+    include_labor: bool = True,
+    contingency_percent: float = 0.10
+) -> Dict[str, float]:
     """
-    Generate cost estimates for all quality tiers for comparison.
+    Compare total project costs across all quality tiers.
     
     Args:
-        material_totals: Material quantities from calculator
-        region: Geographic region
+        material_totals: Dictionary of material quantities
+        region: Geographic region for pricing
+        include_labor: Whether to include labor costs
+        contingency_percent: Contingency percentage
     
     Returns:
-        Dictionary of quality tier to ProjectEstimate
+        Dictionary mapping tier name to total estimate
     """
-    comparisons = {}
+    results = {}
     
     for tier in QualityTier:
         estimator = CostEstimator(
             quality_tier=tier,
             region=region,
-            include_labor=True
+            include_labor=include_labor,
+            contingency_percent=contingency_percent
         )
-        estimate = estimator.estimate_project(
-            f"Comparison - {tier.value}",
-            material_totals
-        )
-        comparisons[tier] = estimate
+        estimate = estimator.estimate_project("Comparison", material_totals)
+        results[tier.value] = estimate.total_estimate
     
-    return comparisons
-
-
-def format_comparison_report(comparisons: Dict[QualityTier, ProjectEstimate]) -> str:
-    """Format a quality tier comparison as a readable report."""
-    lines = [
-        "=" * 70,
-        "QUALITY TIER COMPARISON",
-        "=" * 70,
-        "",
-        f"{'Tier':<12} {'Materials':>15} {'Labor':>15} {'Total':>15}",
-        "-" * 60,
-    ]
-    
-    for tier in [QualityTier.BUDGET, QualityTier.STANDARD, QualityTier.PREMIUM, QualityTier.LUXURY]:
-        if tier in comparisons:
-            est = comparisons[tier]
-            lines.append(
-                f"{tier.value:<12} ${est.subtotal_materials:>13,.2f} ${est.subtotal_labor:>13,.2f} ${est.total_estimate:>13,.2f}"
-            )
-    
-    lines.extend([
-        "",
-        "=" * 70,
-    ])
-    
-    return "\n".join(lines)
+    return results
