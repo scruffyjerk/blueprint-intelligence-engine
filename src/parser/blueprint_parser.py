@@ -66,31 +66,60 @@ class BlueprintParser:
     """
     
     # The prompt that instructs GPT-4 Vision how to analyze blueprints
-    ANALYSIS_PROMPT = """Analyze this residential floor plan image. Your task is to identify all rooms and extract their dimensions.
+    ANALYSIS_PROMPT = """Analyze this residential floor plan image. Your task is to identify all rooms and extract OR ESTIMATE their dimensions.
 
 Please return a JSON object with the following structure:
 {
     "rooms": [
         {
             "name": "Room name (e.g., Living Room, Master Bedroom, Kitchen)",
-            "width": "Width measurement as shown (e.g., '14'-6\"' or '4.5m')",
-            "length": "Length measurement as shown (e.g., '18'-0\"' or '5.2m')",
-            "area": "Area if shown on plan (e.g., '252 sq ft' or '23.4 m²')",
-            "confidence": "high/medium/low based on how clearly you can read the dimensions"
+            "width": "Width measurement (e.g., 14 or 4.5)",
+            "length": "Length measurement (e.g., 18 or 5.2)",
+            "area": "Area in sq ft (e.g., 252 sq ft)",
+            "confidence": "high/medium/low based on measurement source"
         }
     ],
-    "total_area": "Total square footage/meters if shown on the plan",
+    "total_area": "Total square footage if shown or estimated",
     "unit_system": "imperial or metric based on the measurements shown",
-    "warnings": ["List any rooms where dimensions are unclear or missing"]
+    "warnings": ["List any rooms where dimensions had to be estimated"]
 }
 
-Important guidelines:
-1. Include ALL rooms you can identify, even if dimensions are not visible
-2. For rooms without visible dimensions, set width/length to null but still include the room
-3. Use the exact measurements as shown on the blueprint (don't convert units)
-4. If a room has area shown but not dimensions, include the area
-5. Be conservative - if you're unsure about a measurement, mark confidence as "low"
-6. Common room types: Living Room, Dining Room, Kitchen, Bedroom, Bathroom, Master Bedroom, Master Bath, Closet, Garage, Laundry, Office, Den, Foyer, Hallway
+CRITICAL DIMENSION ESTIMATION RULES:
+
+1. If dimensions ARE labeled on the plan, use those exact values (confidence: high)
+
+2. If dimensions are NOT labeled but other rooms have dimensions, ESTIMATE using visual proportions:
+   - Compare the unlabeled room's size visually to labeled rooms
+   - Example: If Living Room is labeled 16x12 and Kitchen appears about 60% that size, estimate Kitchen as 10x12
+   - Mark confidence as "medium" for proportional estimates
+
+3. If NO dimensions are labeled anywhere, use typical room sizes based on visual appearance:
+   - Kitchen: 10x12 to 12x14 (120-168 sq ft)
+   - Bathroom (full): 8x10 (80 sq ft)
+   - Bathroom (half/powder): 5x6 (30 sq ft)  
+   - Master Bedroom: 14x16 (224 sq ft)
+   - Bedroom: 10x12 (120 sq ft)
+   - Living Room: 14x18 (252 sq ft)
+   - Dining Room: 10x12 (120 sq ft)
+   - Walk-in Closet: 6x8 (48 sq ft)
+   - Closet: 3x6 (18 sq ft)
+   - Laundry: 6x8 (48 sq ft)
+   - Storage/Linen: 3x4 to 4x6 (12-24 sq ft)
+   - Mark confidence as "low" for default estimates
+
+4. NEVER return 0 or null for dimensions - always provide your best estimate based on:
+   - Visual proportions relative to other rooms
+   - Typical sizes for that room type
+   - The overall scale of the floor plan
+
+5. Calculate area from width x length if not explicitly shown
+
+Additional guidelines:
+- Include ALL rooms you can identify
+- Use imperial units (feet) unless the plan clearly shows metric
+- For width and length, provide just the number (e.g., "12" not "12 ft" or "12'-0\"")
+- Common room types: Living Room, Dining Room, Kitchen, Bedroom, Bathroom, Master Bedroom, Master Bath, Closet, Walk-in Closet, Garage, Laundry, Office, Den, Foyer, Hallway, Patio, Storage, Linen
+- For outdoor spaces (Patio, Deck), estimate based on visual proportion to interior rooms
 
 Return ONLY the JSON object, no additional text."""
 
