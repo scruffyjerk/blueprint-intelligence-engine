@@ -7,8 +7,9 @@ This is the heart of Takeoff.ai's Phase 1 Proof of Concept.
 import os
 import json
 import base64
+import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 from dataclasses import dataclass, asdict
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -134,96 +135,114 @@ Return ONLY the JSON object, no additional text."""
         
         return image_data, media_type
     
-    def parse(self, image_path: str) -> BlueprintAnalysis:
+    def parse(self, image_input: Union[str, bytes, Path]) -> BlueprintAnalysis:
         """
         Parse a blueprint image and extract room information.
         
         Args:
-            image_path: Path to the blueprint image file.
+            image_input: Path to the blueprint image file, or raw image bytes.
             
         Returns:
             BlueprintAnalysis object with extracted data.
         """
-        path = Path(image_path)
-        if not path.exists():
-            raise FileNotFoundError(f"Blueprint image not found: {image_path}")
+        temp_file_path = None
         
-        # Encode the image
-        image_data, media_type = self._encode_image(image_path)
-        
-        # Call GPT-4 Vision
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": self.ANALYSIS_PROMPT
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:{media_type};base64,{image_data}",
-                                "detail": "high"  # Use high detail for better accuracy
-                            }
-                        }
-                    ]
-                }
-            ],
-            max_tokens=2000,
-            temperature=0.1  # Low temperature for more consistent outputs
-        )
-        
-        # Extract the response
-        raw_response = response.choices[0].message.content
-        
-        # Parse the JSON response
         try:
-            # Clean up the response (remove markdown code blocks if present)
-            json_str = raw_response
-            if "```json" in json_str:
-                json_str = json_str.split("```json")[1].split("```")[0]
-            elif "```" in json_str:
-                json_str = json_str.split("```")[1].split("```")[0]
+            # Handle both bytes and file paths
+            if isinstance(image_input, bytes):
+                # Direct bytes input - save to temporary file
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp:
+                    tmp.write(image_input)
+                    temp_file_path = tmp.name
+                path = Path(temp_file_path)
+                filename = "uploaded_image.png"
+            else:
+                path = Path(image_input)
+                filename = path.name
+                if not path.exists():
+                    raise FileNotFoundError(f"Blueprint image not found: {image_input}")
             
-            data = json.loads(json_str.strip())
-        except json.JSONDecodeError as e:
-            # If JSON parsing fails, return an error analysis
-            return BlueprintAnalysis(
-                filename=path.name,
-                rooms=[],
-                warnings=[f"Failed to parse AI response: {str(e)}"],
+            # Encode the image
+            image_data, media_type = self._encode_image(path)
+            
+            # Call GPT-4 Vision
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": self.ANALYSIS_PROMPT
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:{media_type};base64,{image_data}",
+                                    "detail": "high"  # Use high detail for better accuracy
+                                }
+                            }
+                        ]
+                    }
+                ],
+                max_tokens=2000,
+                temperature=0.1  # Low temperature for more consistent outputs
+            )
+            
+            # Extract the response
+            raw_response = response.choices[0].message.content
+            
+            # Parse the JSON response
+            try:
+                # Clean up the response (remove markdown code blocks if present)
+                json_str = raw_response
+                if "```json" in json_str:
+                    json_str = json_str.split("```json")[1].split("```")[0]
+                elif "```" in json_str:
+                    json_str = json_str.split("```")[1].split("```")[0]
+                
+                data = json.loads(json_str.strip())
+            except json.JSONDecodeError as e:
+                # If JSON parsing fails, return an error analysis
+                return BlueprintAnalysis(
+                    filename=filename,
+                    rooms=[],
+                    warnings=[f"Failed to parse AI response: {str(e)}"],
+                    raw_response=raw_response,
+                    model_used=self.model
+                )
+            
+            # Convert to Room objects
+            rooms = []
+            for room_data in data.get("rooms", []):
+                room = Room(
+                    name=room_data.get("name", "Unknown"),
+                    width=room_data.get("width"),
+                    length=room_data.get("length"),
+                    area=room_data.get("area"),
+                    unit=data.get("unit_system", "unknown"),
+                    confidence=room_data.get("confidence", "medium")
+                )
+                rooms.append(room)
+            
+            # Create the analysis result
+            analysis = BlueprintAnalysis(
+                filename=filename,
+                rooms=rooms,
+                total_area=data.get("total_area"),
+                unit_system=data.get("unit_system", "unknown"),
+                warnings=data.get("warnings", []),
                 raw_response=raw_response,
                 model_used=self.model
             )
-        
-        # Convert to Room objects
-        rooms = []
-        for room_data in data.get("rooms", []):
-            room = Room(
-                name=room_data.get("name", "Unknown"),
-                width=room_data.get("width"),
-                length=room_data.get("length"),
-                area=room_data.get("area"),
-                unit=data.get("unit_system", "unknown"),
-                confidence=room_data.get("confidence", "medium")
-            )
-            rooms.append(room)
-        
-        # Create the analysis result
-        analysis = BlueprintAnalysis(
-            filename=path.name,
-            rooms=rooms,
-            total_area=data.get("total_area"),
-            unit_system=data.get("unit_system", "unknown"),
-            warnings=data.get("warnings", []),
-            raw_response=raw_response,
-            model_used=self.model
-        )
-        
-        return analysis
+            
+            return analysis
+            
+        finally:
+            # Clean up temp file if we created one
+            if temp_file_path and os.path.exists(temp_file_path):
+                os.unlink(temp_file_path)
     
     def parse_batch(self, image_paths: list[str], verbose: bool = True) -> list[BlueprintAnalysis]:
         """
