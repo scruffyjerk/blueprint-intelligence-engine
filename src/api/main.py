@@ -14,6 +14,7 @@ from datetime import datetime
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from enum import Enum
 
@@ -28,6 +29,7 @@ from calculator import (
     Region,
     compare_quality_tiers
 )
+from api.pdf_generator import PDFReportGenerator
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -50,6 +52,7 @@ app.add_middleware(
 # Initialize services
 parser = BlueprintParser()
 calculator = MaterialCalculator(ceiling_height_m=2.4)
+pdf_generator = PDFReportGenerator()
 
 
 # ============================================================================
@@ -143,6 +146,50 @@ class HealthResponse(BaseModel):
     status: str
     timestamp: str
     version: str
+
+
+# PDF Report Request Models
+class RoomInput(BaseModel):
+    name: str
+    dimensions: Dict[str, float] = {}
+    area: float = 0
+    confidence: float = 0.5
+
+
+class MaterialInput(BaseModel):
+    name: str
+    category: str
+    quantity: float
+    unit: str
+    unit_cost: float
+    material_cost: float
+    labor_cost: float
+    total_cost: float
+
+
+class CostBreakdownInput(BaseModel):
+    materials_subtotal: float
+    labor_subtotal: float
+    subtotal: float
+    contingency_amount: float
+    grand_total: float
+
+
+class TierComparisonInput(BaseModel):
+    tier: str
+    grand_total: float
+
+
+class PDFReportRequest(BaseModel):
+    project_name: str = "Construction Estimate"
+    filename: str = "blueprint.jpg"
+    rooms: List[RoomInput]
+    materials: List[MaterialInput]
+    cost_breakdown: CostBreakdownInput
+    tier_comparisons: List[TierComparisonInput]
+    selected_tier: str = "standard"
+    total_area: float = 0
+    contingency_percent: float = 10
 
 
 # ============================================================================
@@ -477,6 +524,49 @@ async def full_analysis(
             # Clean up temp file
             os.unlink(tmp_path)
             
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/generate-pdf")
+async def generate_pdf_report(request: PDFReportRequest):
+    """
+    Generate a PDF report from analysis results.
+    
+    Returns: PDF file as a downloadable stream
+    """
+    try:
+        # Convert request data to the format expected by PDF generator
+        rooms = [room.dict() for room in request.rooms]
+        materials = [mat.dict() for mat in request.materials]
+        cost_breakdown = request.cost_breakdown.dict()
+        tier_comparisons = [tier.dict() for tier in request.tier_comparisons]
+        
+        # Generate PDF
+        pdf_buffer = pdf_generator.generate_report(
+            project_name=request.project_name,
+            rooms=rooms,
+            materials=materials,
+            cost_breakdown=cost_breakdown,
+            tier_comparisons=tier_comparisons,
+            selected_tier=request.selected_tier,
+            total_area=request.total_area,
+            contingency_percent=request.contingency_percent,
+            filename=request.filename
+        )
+        
+        # Create filename for download
+        safe_project_name = "".join(c for c in request.project_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+        download_filename = f"{safe_project_name or 'estimate'}_report.pdf"
+        
+        return StreamingResponse(
+            pdf_buffer,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{download_filename}"'
+            }
+        )
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
