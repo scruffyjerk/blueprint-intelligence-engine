@@ -427,11 +427,14 @@ async def full_analysis(
             
             estimate = estimator.estimate_project(project_name, totals)
             
-            estimate_items = [
-                CostEstimateItem(
+            estimate_items = []
+            for item in estimate.estimates:
+                # Handle quality_tier - could be Enum or string
+                tier_value = item.quality_tier.value if hasattr(item.quality_tier, 'value') else str(item.quality_tier)
+                estimate_items.append(CostEstimateItem(
                     material_type=item.material_type,
                     display_name=item.display_name,
-                    quality_tier=item.quality_tier.value,
+                    quality_tier=tier_value,
                     units_needed=item.units_needed,
                     unit=item.unit,
                     material_cost=item.material_cost,
@@ -439,9 +442,7 @@ async def full_analysis(
                     total_cost=item.total_cost,
                     price_per_unit=item.price_per_unit,
                     brand_example=item.brand_example
-                )
-                for item in estimate.estimates
-            ]
+                ))
             
             cost_estimate = ProjectEstimateResponse(
                 project_name=estimate.project_name,
