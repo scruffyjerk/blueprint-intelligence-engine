@@ -129,3 +129,4 @@ TBD
 ## Acknowledgments
 
 Built with assistance from AI tools including Manus, Claude, and GitHub Copilot.
+# Trigger redeploy Tue Jan 20 18:26:28 EST 2026
