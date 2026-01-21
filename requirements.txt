@@ -36,3 +36,6 @@ flake8>=6.0.0
 isort>=5.12.0
 # PDF Generation
 reportlab>=4.0.0
+
+# Payments
+stripe>=8.0.0

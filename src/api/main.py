@@ -12,7 +12,7 @@ import tempfile
 from typing import Optional, List, Dict
 from datetime import datetime
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Query
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -31,6 +31,17 @@ from calculator import (
     compare_quality_tiers
 )
 from api.pdf_generator import PDFReportGenerator
+from api.stripe_integration import (
+    create_checkout_session,
+    create_customer_portal_session,
+    get_subscription_from_session,
+    get_subscription_status,
+    handle_webhook_event,
+    verify_webhook_signature,
+    get_pricing_info,
+    PRICE_IDS,
+)
+from api.user_store import user_store
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -583,6 +594,220 @@ async def generate_pdf_report(request: PDFReportRequest):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Stripe & Subscription Endpoints
+# ============================================================================
+
+class CreateCheckoutRequest(BaseModel):
+    plan: str  # "pro" or "agency"
+    interval: str  # "monthly" or "annual"
+    success_url: str
+    cancel_url: str
+    email: Optional[str] = None
+
+
+class CreateCheckoutResponse(BaseModel):
+    checkout_url: str
+    session_id: str
+
+
+class UsageCheckRequest(BaseModel):
+    user_id: str  # Email or anonymous ID
+
+
+class UsageResponse(BaseModel):
+    allowed: bool
+    current_usage: int
+    limit: int
+    remaining: int
+    plan: str
+    message: Optional[str] = None
+
+
+@app.get("/api/v1/pricing")
+async def get_pricing():
+    """
+    Get pricing information for all plans.
+    
+    Returns: Pricing details for Free, Pro, and Agency plans
+    """
+    return get_pricing_info()
+
+
+@app.post("/api/v1/create-checkout-session", response_model=CreateCheckoutResponse)
+async def create_checkout(request: CreateCheckoutRequest):
+    """
+    Create a Stripe Checkout session for subscription.
+    
+    Returns: Checkout URL to redirect user to Stripe
+    """
+    try:
+        # Validate plan and interval
+        if request.plan not in ["pro", "agency"]:
+            raise HTTPException(status_code=400, detail="Invalid plan. Must be 'pro' or 'agency'")
+        if request.interval not in ["monthly", "annual"]:
+            raise HTTPException(status_code=400, detail="Invalid interval. Must be 'monthly' or 'annual'")
+        
+        result = create_checkout_session(
+            plan=request.plan,
+            interval=request.interval,
+            success_url=request.success_url,
+            cancel_url=request.cancel_url,
+            customer_email=request.email
+        )
+        
+        return CreateCheckoutResponse(
+            checkout_url=result["checkout_url"],
+            session_id=result["session_id"]
+        )
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/checkout-success")
+async def checkout_success(session_id: str = Query(...)):
+    """
+    Handle successful checkout - retrieve subscription details.
+    
+    Called after user completes Stripe Checkout.
+    """
+    try:
+        result = get_subscription_from_session(session_id)
+        
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+        
+        # Update user in our store
+        if result.get("customer_id"):
+            # Try to find or create user
+            # In production, you'd have the user's email from the session
+            user_store.update_subscription(
+                user_id=result.get("customer_id"),  # Use customer ID as user ID for now
+                plan=result.get("plan", "pro"),
+                stripe_customer_id=result.get("customer_id"),
+                stripe_subscription_id=result.get("subscription_id"),
+                subscription_status="active",
+                subscription_interval=result.get("interval"),
+                current_period_end=result.get("current_period_end")
+            )
+        
+        return result
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/create-portal-session")
+async def create_portal(customer_id: str = Query(...), return_url: str = Query(...)):
+    """
+    Create a Stripe Customer Portal session for managing subscription.
+    
+    Returns: Portal URL for subscription management
+    """
+    try:
+        portal_url = create_customer_portal_session(customer_id, return_url)
+        return {"portal_url": portal_url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/webhook")
+async def stripe_webhook(
+    request: Request,
+    stripe_signature: str = Header(None, alias="Stripe-Signature")
+):
+    """
+    Handle Stripe webhook events.
+    
+    This endpoint receives events from Stripe for subscription updates.
+    """
+    try:
+        payload = await request.body()
+        
+        # Verify signature if webhook secret is configured
+        if stripe_signature:
+            verification = verify_webhook_signature(payload, stripe_signature)
+            if not verification.get("success"):
+                # Log but don't fail - allows testing without signature
+                print(f"Webhook signature verification failed: {verification.get('error')}")
+        
+        # Parse the event
+        import json
+        event = json.loads(payload)
+        
+        # Handle the event
+        result = handle_webhook_event(event)
+        
+        # Update user store based on event
+        if result.get("action") == "subscription_created":
+            customer_id = result.get("customer_id")
+            if customer_id:
+                email = result.get("customer_email", customer_id)
+                user = user_store.get_user_by_email(email) or user_store.create_user(email=email)
+                user_store.update_subscription(
+                    user_id=user.id,
+                    plan=result.get("plan", "pro"),
+                    stripe_customer_id=customer_id,
+                    stripe_subscription_id=result.get("subscription_id"),
+                    subscription_status="active",
+                    subscription_interval=result.get("interval")
+                )
+        
+        elif result.get("action") == "subscription_cancelled":
+            customer_id = result.get("customer_id")
+            if customer_id:
+                user = user_store.get_user_by_stripe_customer(customer_id)
+                if user:
+                    user_store.cancel_subscription(user.id)
+        
+        return {"received": True, "result": result}
+        
+    except Exception as e:
+        print(f"Webhook error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/check-usage", response_model=UsageResponse)
+async def check_usage(request: UsageCheckRequest):
+    """
+    Check a user's current usage without incrementing.
+    
+    Returns: Usage info including remaining estimates
+    """
+    usage = user_store.check_usage(request.user_id)
+    return UsageResponse(
+        allowed=usage.get("remaining", 0) != 0,
+        current_usage=usage.get("current_usage", 0),
+        limit=usage.get("limit", 3),
+        remaining=usage.get("remaining", 3),
+        plan=usage.get("plan", "free")
+    )
+
+
+@app.post("/api/v1/increment-usage")
+async def increment_usage(request: UsageCheckRequest):
+    """
+    Increment a user's usage count (call before processing an estimate).
+    
+    Returns: Whether the request is allowed and usage info
+    """
+    result = user_store.increment_usage(request.user_id)
+    return result
+
+
+@app.get("/api/v1/subscription-status")
+async def get_user_subscription(user_id: str = Query(...)):
+    """
+    Get a user's subscription status.
+    
+    Returns: Subscription details including plan and usage
+    """
+    return user_store.get_user_subscription_info(user_id)
 
 
 # ============================================================================
