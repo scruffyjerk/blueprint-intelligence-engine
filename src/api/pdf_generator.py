@@ -96,7 +96,8 @@ class PDFReportGenerator:
         selected_tier: str = 'standard',
         total_area: float = 0,
         contingency_percent: float = 10,
-        filename: str = 'blueprint.jpg'
+        filename: str = 'blueprint.jpg',
+        labor_availability: str = 'average'
     ) -> BytesIO:
         """
         Generate a PDF report for the construction estimate.
@@ -124,7 +125,8 @@ class PDFReportGenerator:
             total_area=total_area,
             room_count=len(rooms),
             selected_tier=selected_tier,
-            grand_total=cost_breakdown.get('grand_total', 0)
+            grand_total=cost_breakdown.get('grand_total', 0),
+            labor_availability=labor_availability
         ))
         
         # Room Breakdown
@@ -202,7 +204,8 @@ class PDFReportGenerator:
         total_area: float,
         room_count: int,
         selected_tier: str,
-        grand_total: float
+        grand_total: float,
+        labor_availability: str = 'average'
     ) -> List:
         """Build the project summary section."""
         elements = []
@@ -216,10 +219,17 @@ class PDFReportGenerator:
             'luxury': 'Luxury'
         }
         
+        labor_labels = {
+            'low': 'Low (Shortage +15%)',
+            'average': 'Average',
+            'high': 'High (Surplus -10%)'
+        }
+        
         summary_data = [
             ['Total Area', f'{total_area:,.0f} sq ft'],
             ['Rooms Detected', str(room_count)],
             ['Quality Tier', tier_labels.get(selected_tier, 'Standard')],
+            ['Labor Availability', labor_labels.get(labor_availability, 'Average')],
             ['Estimated Total', f'${grand_total:,.2f}'],
         ]
         

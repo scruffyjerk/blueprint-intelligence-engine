@@ -27,6 +27,7 @@ from calculator import (
     CostEstimator,
     QualityTier,
     Region,
+    LaborAvailability,
     compare_quality_tiers
 )
 from api.pdf_generator import PDFReportGenerator
@@ -73,6 +74,12 @@ class RegionEnum(str, Enum):
     us_midwest = "us_midwest"
     us_southwest = "us_southwest"
     us_west = "us_west"
+
+
+class LaborAvailabilityEnum(str, Enum):
+    low = "low"        # Labor shortage - +15% labor cost
+    average = "average"  # Normal market - no adjustment
+    high = "high"      # Labor surplus - -10% labor cost
 
 
 class RoomData(BaseModel):
@@ -190,6 +197,7 @@ class PDFReportRequest(BaseModel):
     selected_tier: str = "standard"
     total_area: float = 0
     contingency_percent: float = 10
+    labor_availability: str = "average"
 
 
 # ============================================================================
@@ -394,7 +402,8 @@ async def full_analysis(
     quality_tier: QualityTierEnum = Query(QualityTierEnum.standard),
     region: RegionEnum = Query(RegionEnum.us_national),
     include_labor: bool = Query(True),
-    contingency_percent: float = Query(0.10)
+    contingency_percent: float = Query(0.10),
+    labor_availability: LaborAvailabilityEnum = Query(LaborAvailabilityEnum.average)
 ):
     """
     Complete end-to-end analysis: parse blueprint, calculate materials, estimate costs.
@@ -465,11 +474,15 @@ async def full_analysis(
             tier = QualityTier(quality_tier.value)
             reg = Region(region.value)
             
+            # Convert labor availability
+            labor_avail = LaborAvailability(labor_availability.value)
+            
             estimator = CostEstimator(
                 quality_tier=tier,
                 region=reg,
                 include_labor=include_labor,
-                contingency_percent=contingency_percent
+                contingency_percent=contingency_percent,
+                labor_availability=labor_avail
             )
             
             estimate = estimator.estimate_project(project_name, totals)
@@ -505,7 +518,7 @@ async def full_analysis(
             )
             
             # Step 4: Quality tier comparison
-            comparisons = compare_quality_tiers(totals, reg)
+            comparisons = compare_quality_tiers(totals, reg, include_labor, contingency_percent, labor_avail)
             quality_comparison = QualityComparisonResponse(
                 budget=comparisons['budget'],
                 standard=comparisons['standard'],
@@ -552,7 +565,8 @@ async def generate_pdf_report(request: PDFReportRequest):
             selected_tier=request.selected_tier,
             total_area=request.total_area,
             contingency_percent=request.contingency_percent,
-            filename=request.filename
+            filename=request.filename,
+            labor_availability=request.labor_availability
         )
         
         # Create filename for download

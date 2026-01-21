@@ -31,6 +31,21 @@ class Region(Enum):
     US_WEST = "us_west"
 
 
+class LaborAvailability(Enum):
+    """Labor market availability levels."""
+    LOW = "low"          # Labor shortage - higher costs
+    AVERAGE = "average"  # Normal market conditions
+    HIGH = "high"        # Labor surplus - lower costs
+
+
+# Labor availability multipliers
+LABOR_AVAILABILITY_MULTIPLIERS = {
+    LaborAvailability.LOW: 1.15,      # +15% labor cost (shortage)
+    LaborAvailability.AVERAGE: 1.00,  # No adjustment
+    LaborAvailability.HIGH: 0.90,     # -10% labor cost (surplus)
+}
+
+
 class RoomType(Enum):
     """Room types for category-specific calculations."""
     KITCHEN = "kitchen"
@@ -518,7 +533,8 @@ class CostEstimator:
         quality_tier: QualityTier = QualityTier.STANDARD,
         region: Region = Region.US_NATIONAL,
         include_labor: bool = True,
-        contingency_percent: float = 0.10
+        contingency_percent: float = 0.10,
+        labor_availability: LaborAvailability = LaborAvailability.AVERAGE
     ):
         """
         Initialize the cost estimator.
@@ -528,12 +544,15 @@ class CostEstimator:
             region: Geographic region for pricing
             include_labor: Whether to include labor costs
             contingency_percent: Contingency percentage (0.10 = 10%)
+            labor_availability: Local labor market availability (affects labor costs)
         """
         self.quality_tier = quality_tier
         self.region = region
         self.include_labor = include_labor
         self.contingency_percent = contingency_percent
+        self.labor_availability = labor_availability
         self.regional_multiplier = PricingDatabase.get_regional_multiplier(region)
+        self.labor_availability_multiplier = LABOR_AVAILABILITY_MULTIPLIERS.get(labor_availability, 1.0)
     
     def estimate_material(
         self,
@@ -574,7 +593,7 @@ class CostEstimator:
             else:  # unit-based (fixtures)
                 labor_area = quantity.units_needed
             
-            labor_cost = labor_area * pricing.labor_rate_per_unit * self.regional_multiplier
+            labor_cost = labor_area * pricing.labor_rate_per_unit * self.regional_multiplier * self.labor_availability_multiplier
         
         total_cost = material_cost + labor_cost
         
@@ -624,7 +643,7 @@ class CostEstimator:
         # Calculate labor cost
         labor_cost = 0.0
         if self.include_labor:
-            labor_cost = count * pricing.labor_rate_per_unit * self.regional_multiplier
+            labor_cost = count * pricing.labor_rate_per_unit * self.regional_multiplier * self.labor_availability_multiplier
         
         total_cost = material_cost + labor_cost
         
@@ -707,7 +726,8 @@ def compare_quality_tiers(
     material_totals: Dict[str, MaterialQuantity],
     region: Region = Region.US_NATIONAL,
     include_labor: bool = True,
-    contingency_percent: float = 0.10
+    contingency_percent: float = 0.10,
+    labor_availability: LaborAvailability = LaborAvailability.AVERAGE
 ) -> Dict[str, float]:
     """
     Compare total project costs across all quality tiers.
@@ -717,6 +737,7 @@ def compare_quality_tiers(
         region: Geographic region for pricing
         include_labor: Whether to include labor costs
         contingency_percent: Contingency percentage
+        labor_availability: Local labor market availability
     
     Returns:
         Dictionary mapping tier name to total estimate
@@ -728,7 +749,8 @@ def compare_quality_tiers(
             quality_tier=tier,
             region=region,
             include_labor=include_labor,
-            contingency_percent=contingency_percent
+            contingency_percent=contingency_percent,
+            labor_availability=labor_availability
         )
         estimate = estimator.estimate_project("Comparison", material_totals)
         results[tier.value] = estimate.total_estimate
