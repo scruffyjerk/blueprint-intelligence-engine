@@ -70,24 +70,24 @@ class BlueprintParser:
 
 STEP 1 - FIND DIMENSION LABELS (CRITICAL):
 Carefully scan the entire image for dimension annotations. These typically appear as:
-- Numbers with tick marks or arrows (e.g., "14'-6\"" or "4.5m")
+- Numbers with tick marks or arrows (e.g., 14 feet 6 inches or 4.5m)
 - Dimension lines with measurements above or below them
-- Room labels that include dimensions (e.g., "BEDROOM 12x14")
-- Scale indicators (e.g., "1/4\" = 1'-0\"")
+- Room labels that include dimensions (e.g., BEDROOM 12x14)
+- Scale indicators (e.g., quarter inch equals one foot)
 - Total dimensions along exterior walls
 
 STEP 2 - EXTRACT EXACT MEASUREMENTS:
 For each room where you can READ dimension labels:
 - Use the EXACT numbers shown on the plan
 - Convert all measurements to feet (decimal format)
-- Mark confidence as "high"
+- Mark confidence as high
 
 STEP 3 - ESTIMATE ONLY WHEN NECESSARY:
 For rooms WITHOUT visible dimension labels:
 - Use proportional comparison to rooms WITH labels
-- If a room appears 75% the width of a labeled 16' room, estimate 12'
-- Mark confidence as "medium" for proportional estimates
-- Mark confidence as "low" only if no reference dimensions exist
+- If a room appears 75% the width of a labeled 16 foot room, estimate 12
+- Mark confidence as medium for proportional estimates
+- Mark confidence as low only if no reference dimensions exist
 
 Please return a JSON object with the following structure:
 {
@@ -97,13 +97,11 @@ Please return a JSON object with the following structure:
             "width": "Width measurement as number only (e.g., 14 or 4.5)",
             "length": "Length measurement as number only (e.g., 18 or 5.2)",
             "area": "Calculated area in sq ft (width x length)",
-            "confidence": "high if read from labels, medium if proportional estimate, low if default estimate",
-            "dimension_source": "labeled/proportional/estimated"
+            "confidence": "high, medium, or low"
         }
     ],
     "total_area": "Sum of all room areas",
     "unit_system": "imperial or metric based on the measurements shown",
-    "scale_found": "The scale indicator if visible (e.g., 1/4\" = 1'-0\"), or null if not found",
     "warnings": ["List rooms where dimensions were estimated, not read from labels"]
 }
 
@@ -123,7 +121,7 @@ CRITICAL RULES:
 1. ALWAYS look for dimension labels FIRST - most professional blueprints have them
 2. NEVER return 0 or null for dimensions
 3. Use imperial units (feet) unless the plan clearly shows metric
-4. For width and length, provide just the number (e.g., "12" not "12 ft")
+4. For width and length, provide just the number (e.g., 12 not 12 ft)
 5. Include ALL rooms you can identify
 6. Be CONSISTENT - if you identify a room as 12x14, always report it as 12x14
 
@@ -134,13 +132,12 @@ Return ONLY the JSON object, no additional text."""
         Initialize the parser.
         
         Args:
-            api_key: OpenAI API key. If not provided, uses OPENAI_API_KEY env var.
+            api_key: OpenAI API key. Defaults to OPENAI_API_KEY env var.
             model: Model to use. Defaults to OPENAI_MODEL env var or 'gpt-4o'.
         """
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key or self.api_key == "your_openai_api_key_here":
-            raise ValueError("OpenAI API key not configured. Set OPENAI_API_KEY in .env file.")
-        
+            raise ValueError("OpenAI API key not configured. Set OPENAI_API_KEY environment variable.")
         self.model = model or os.getenv("OPENAI_MODEL", "gpt-4o")
         self.client = OpenAI(api_key=self.api_key)
     
@@ -148,59 +145,58 @@ Return ONLY the JSON object, no additional text."""
         """
         Encode an image file to base64.
         
+        Args:
+            image_path: Path to the image file
+            
         Returns:
-            Tuple of (base64_string, media_type)
+            Tuple of (base64_data, media_type)
         """
         path = Path(image_path)
         
         # Determine media type
         suffix = path.suffix.lower()
         media_types = {
-            ".png": "image/png",
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".gif": "image/gif",
-            ".webp": "image/webp"
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.gif': 'image/gif',
+            '.webp': 'image/webp'
         }
-        media_type = media_types.get(suffix, "image/jpeg")
+        media_type = media_types.get(suffix, 'image/png')
         
         # Read and encode
-        with open(path, "rb") as f:
-            image_data = base64.b64encode(f.read()).decode("utf-8")
+        with open(path, 'rb') as f:
+            image_data = base64.b64encode(f.read()).decode('utf-8')
         
         return image_data, media_type
     
-    def parse(self, image_input: Union[str, bytes, Path]) -> BlueprintAnalysis:
+    def parse(self, image_source: Union[str, bytes], filename: str = "blueprint") -> BlueprintAnalysis:
         """
         Parse a blueprint image and extract room information.
         
         Args:
-            image_input: Path to the blueprint image file, or raw image bytes.
+            image_source: Either a file path (str) or raw image bytes
+            filename: Name to use in the result (defaults to "blueprint")
             
         Returns:
-            BlueprintAnalysis object with extracted data.
+            BlueprintAnalysis object with extracted room data
         """
         temp_file_path = None
         
         try:
-            # Handle both bytes and file paths
-            if isinstance(image_input, bytes):
-                # Direct bytes input - save to temporary file
+            # Handle different input types
+            if isinstance(image_source, bytes):
+                # Save bytes to temp file
                 with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp:
-                    tmp.write(image_input)
+                    tmp.write(image_source)
                     temp_file_path = tmp.name
-                path = Path(temp_file_path)
-                filename = "uploaded_image.png"
+                image_data, media_type = self._encode_image(temp_file_path)
             else:
-                path = Path(image_input)
-                filename = path.name
-                if not path.exists():
-                    raise FileNotFoundError(f"Blueprint image not found: {image_input}")
+                # It's a file path
+                image_data, media_type = self._encode_image(image_source)
+                filename = Path(image_source).name
             
-            # Encode the image
-            image_data, media_type = self._encode_image(path)
-            
-            # Call GPT-4 Vision
+            # Call OpenAI Vision API
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
@@ -284,73 +280,16 @@ Return ONLY the JSON object, no additional text."""
         Parse multiple blueprint images.
         
         Args:
-            image_paths: List of paths to blueprint images.
-            verbose: Whether to print progress.
+            image_paths: List of paths to blueprint images
+            verbose: Whether to print progress
             
         Returns:
-            List of BlueprintAnalysis objects.
+            List of BlueprintAnalysis objects
         """
         results = []
-        total = len(image_paths)
-        
-        for i, path in enumerate(image_paths, 1):
+        for i, path in enumerate(image_paths):
             if verbose:
-                print(f"[{i}/{total}] Parsing: {Path(path).name}...")
-            
-            try:
-                analysis = self.parse(path)
-                results.append(analysis)
-                if verbose:
-                    print(f"         Found {len(analysis.rooms)} rooms")
-            except Exception as e:
-                if verbose:
-                    print(f"         ERROR: {str(e)}")
-                results.append(BlueprintAnalysis(
-                    filename=Path(path).name,
-                    rooms=[],
-                    warnings=[f"Processing error: {str(e)}"]
-                ))
-        
+                print(f"Processing {i+1}/{len(image_paths)}: {path}")
+            result = self.parse(path)
+            results.append(result)
         return results
-
-
-def main():
-    """Test the parser with a sample blueprint."""
-    import sys
-    
-    # Check for command line argument
-    if len(sys.argv) < 2:
-        print("Usage: python blueprint_parser.py <path_to_blueprint_image>")
-        print("\nExample: python blueprint_parser.py ../data/blueprints/01_roomsketcher_apartment_metric.png")
-        sys.exit(1)
-    
-    image_path = sys.argv[1]
-    
-    print(f"\n{'='*60}")
-    print("TAKEOFF.AI - Blueprint Parser v0.1")
-    print(f"{'='*60}\n")
-    
-    try:
-        parser = BlueprintParser()
-        print(f"Analyzing: {image_path}")
-        print(f"Model: {parser.model}\n")
-        
-        analysis = parser.parse(image_path)
-        
-        print("RESULTS:")
-        print("-" * 40)
-        print(analysis.to_json())
-        
-        print("\n" + "-" * 40)
-        print(f"Total rooms found: {len(analysis.rooms)}")
-        print(f"Unit system: {analysis.unit_system}")
-        if analysis.warnings:
-            print(f"Warnings: {', '.join(analysis.warnings)}")
-            
-    except Exception as e:
-        print(f"Error: {str(e)}")
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()
