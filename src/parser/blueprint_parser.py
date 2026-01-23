@@ -66,60 +66,66 @@ class BlueprintParser:
     """
     
     # The prompt that instructs GPT-4 Vision how to analyze blueprints
-    ANALYSIS_PROMPT = """Analyze this residential floor plan image. Your task is to identify all rooms and extract OR ESTIMATE their dimensions.
+    ANALYSIS_PROMPT = """You are an expert construction estimator analyzing a residential floor plan. Your PRIMARY task is to READ and EXTRACT the exact dimension labels shown on the blueprint.
+
+STEP 1 - FIND DIMENSION LABELS (CRITICAL):
+Carefully scan the entire image for dimension annotations. These typically appear as:
+- Numbers with tick marks or arrows (e.g., "14'-6\"" or "4.5m")
+- Dimension lines with measurements above or below them
+- Room labels that include dimensions (e.g., "BEDROOM 12x14")
+- Scale indicators (e.g., "1/4\" = 1'-0\"")
+- Total dimensions along exterior walls
+
+STEP 2 - EXTRACT EXACT MEASUREMENTS:
+For each room where you can READ dimension labels:
+- Use the EXACT numbers shown on the plan
+- Convert all measurements to feet (decimal format)
+- Mark confidence as "high"
+
+STEP 3 - ESTIMATE ONLY WHEN NECESSARY:
+For rooms WITHOUT visible dimension labels:
+- Use proportional comparison to rooms WITH labels
+- If a room appears 75% the width of a labeled 16' room, estimate 12'
+- Mark confidence as "medium" for proportional estimates
+- Mark confidence as "low" only if no reference dimensions exist
 
 Please return a JSON object with the following structure:
 {
     "rooms": [
         {
             "name": "Room name (e.g., Living Room, Master Bedroom, Kitchen)",
-            "width": "Width measurement (e.g., 14 or 4.5)",
-            "length": "Length measurement (e.g., 18 or 5.2)",
-            "area": "Area in sq ft (e.g., 252 sq ft)",
-            "confidence": "high/medium/low based on measurement source"
+            "width": "Width measurement as number only (e.g., 14 or 4.5)",
+            "length": "Length measurement as number only (e.g., 18 or 5.2)",
+            "area": "Calculated area in sq ft (width x length)",
+            "confidence": "high if read from labels, medium if proportional estimate, low if default estimate",
+            "dimension_source": "labeled/proportional/estimated"
         }
     ],
-    "total_area": "Total square footage if shown or estimated",
+    "total_area": "Sum of all room areas",
     "unit_system": "imperial or metric based on the measurements shown",
-    "warnings": ["List any rooms where dimensions had to be estimated"]
+    "scale_found": "The scale indicator if visible (e.g., 1/4\" = 1'-0\"), or null if not found",
+    "warnings": ["List rooms where dimensions were estimated, not read from labels"]
 }
 
-CRITICAL DIMENSION ESTIMATION RULES:
+DEFAULT ROOM SIZES (use ONLY when no labels or proportions available):
+- Kitchen: 12x12 (144 sq ft)
+- Bathroom (full): 8x10 (80 sq ft)
+- Bathroom (half/powder): 5x6 (30 sq ft)  
+- Master Bedroom: 14x16 (224 sq ft)
+- Bedroom: 11x12 (132 sq ft)
+- Living Room: 16x18 (288 sq ft)
+- Dining Room: 11x12 (132 sq ft)
+- Walk-in Closet: 6x8 (48 sq ft)
+- Closet: 3x6 (18 sq ft)
+- Laundry: 6x8 (48 sq ft)
 
-1. If dimensions ARE labeled on the plan, use those exact values (confidence: high)
-
-2. If dimensions are NOT labeled but other rooms have dimensions, ESTIMATE using visual proportions:
-   - Compare the unlabeled room's size visually to labeled rooms
-   - Example: If Living Room is labeled 16x12 and Kitchen appears about 60% that size, estimate Kitchen as 10x12
-   - Mark confidence as "medium" for proportional estimates
-
-3. If NO dimensions are labeled anywhere, use typical room sizes based on visual appearance:
-   - Kitchen: 10x12 to 12x14 (120-168 sq ft)
-   - Bathroom (full): 8x10 (80 sq ft)
-   - Bathroom (half/powder): 5x6 (30 sq ft)  
-   - Master Bedroom: 14x16 (224 sq ft)
-   - Bedroom: 10x12 (120 sq ft)
-   - Living Room: 14x18 (252 sq ft)
-   - Dining Room: 10x12 (120 sq ft)
-   - Walk-in Closet: 6x8 (48 sq ft)
-   - Closet: 3x6 (18 sq ft)
-   - Laundry: 6x8 (48 sq ft)
-   - Storage/Linen: 3x4 to 4x6 (12-24 sq ft)
-   - Mark confidence as "low" for default estimates
-
-4. NEVER return 0 or null for dimensions - always provide your best estimate based on:
-   - Visual proportions relative to other rooms
-   - Typical sizes for that room type
-   - The overall scale of the floor plan
-
-5. Calculate area from width x length if not explicitly shown
-
-Additional guidelines:
-- Include ALL rooms you can identify
-- Use imperial units (feet) unless the plan clearly shows metric
-- For width and length, provide just the number (e.g., "12" not "12 ft" or "12'-0\"")
-- Common room types: Living Room, Dining Room, Kitchen, Bedroom, Bathroom, Master Bedroom, Master Bath, Closet, Walk-in Closet, Garage, Laundry, Office, Den, Foyer, Hallway, Patio, Storage, Linen
-- For outdoor spaces (Patio, Deck), estimate based on visual proportion to interior rooms
+CRITICAL RULES:
+1. ALWAYS look for dimension labels FIRST - most professional blueprints have them
+2. NEVER return 0 or null for dimensions
+3. Use imperial units (feet) unless the plan clearly shows metric
+4. For width and length, provide just the number (e.g., "12" not "12 ft")
+5. Include ALL rooms you can identify
+6. Be CONSISTENT - if you identify a room as 12x14, always report it as 12x14
 
 Return ONLY the JSON object, no additional text."""
 
@@ -216,7 +222,7 @@ Return ONLY the JSON object, no additional text."""
                     }
                 ],
                 max_tokens=2000,
-                temperature=0.1  # Low temperature for more consistent outputs
+                temperature=0  # Zero temperature for deterministic, consistent outputs
             )
             
             # Extract the response
