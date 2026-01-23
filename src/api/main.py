@@ -9,7 +9,7 @@ import os
 import sys
 import base64
 import tempfile
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Union
 from datetime import datetime
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Request, Header
@@ -96,9 +96,9 @@ class LaborAvailabilityEnum(str, Enum):
 
 class RoomData(BaseModel):
     name: str
-    width: Optional[str] = None
-    length: Optional[str] = None
-    area: Optional[str] = None
+    width: Optional[Union[str, int, float]] = None
+    length: Optional[Union[str, int, float]] = None
+    area: Optional[Union[str, int, float]] = None
     unit: str = "imperial"
     confidence: str = "medium"
 
