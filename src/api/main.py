@@ -42,6 +42,7 @@ from api.stripe_integration import (
     PRICE_IDS,
 )
 from api.user_store import user_store
+from api.supabase_store import supabase_store
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -725,6 +726,7 @@ async def stripe_webhook(
     Handle Stripe webhook events.
     
     This endpoint receives events from Stripe for subscription updates.
+    Updates both the legacy user_store and the new Supabase store.
     """
     try:
         payload = await request.body()
@@ -738,28 +740,80 @@ async def stripe_webhook(
         
         # Parse the event
         import json
+        from datetime import datetime
         event = json.loads(payload)
         
         # Handle the event
         result = handle_webhook_event(event)
+        event_data = event.get("data", {}).get("object", {})
         
-        # Update user store based on event
+        # Update Supabase store based on event
         if result.get("action") == "subscription_created":
             customer_id = result.get("customer_id")
-            if customer_id:
-                email = result.get("customer_email", customer_id)
-                user = user_store.get_user_by_email(email) or user_store.create_user(email=email)
+            customer_email = result.get("customer_email")
+            subscription_id = result.get("subscription_id")
+            plan = result.get("plan", "pro")
+            interval = result.get("interval", "monthly")
+            
+            # Get period end from event data
+            period_end = None
+            if subscription_id:
+                try:
+                    import stripe
+                    sub = stripe.Subscription.retrieve(subscription_id)
+                    period_end = datetime.fromtimestamp(sub.current_period_end)
+                except:
+                    pass
+            
+            if customer_id and customer_email:
+                # Update Supabase
+                supabase_store.handle_checkout_completed(
+                    customer_id=customer_id,
+                    customer_email=customer_email,
+                    subscription_id=subscription_id,
+                    plan=plan,
+                    interval=interval,
+                    current_period_end=period_end
+                )
+                
+                # Also update legacy store for backwards compatibility
+                user = user_store.get_user_by_email(customer_email) or user_store.create_user(email=customer_email)
                 user_store.update_subscription(
                     user_id=user.id,
-                    plan=result.get("plan", "pro"),
+                    plan=plan,
                     stripe_customer_id=customer_id,
-                    stripe_subscription_id=result.get("subscription_id"),
+                    stripe_subscription_id=subscription_id,
                     subscription_status="active",
-                    subscription_interval=result.get("interval")
+                    subscription_interval=interval
+                )
+        
+        elif result.get("action") == "subscription_updated":
+            subscription_id = result.get("subscription_id")
+            status = result.get("status", "active")
+            cancel_at_period_end = result.get("cancel_at_period_end", False)
+            
+            # Get period end from event data
+            period_end = None
+            if event_data.get("current_period_end"):
+                period_end = datetime.fromtimestamp(event_data["current_period_end"])
+            
+            if subscription_id:
+                supabase_store.handle_subscription_updated(
+                    subscription_id=subscription_id,
+                    status=status,
+                    cancel_at_period_end=cancel_at_period_end,
+                    current_period_end=period_end
                 )
         
         elif result.get("action") == "subscription_cancelled":
+            subscription_id = result.get("subscription_id")
             customer_id = result.get("customer_id")
+            
+            if subscription_id:
+                # Update Supabase
+                supabase_store.handle_subscription_deleted(subscription_id)
+            
+            # Also update legacy store
             if customer_id:
                 user = user_store.get_user_by_stripe_customer(customer_id)
                 if user:
@@ -778,8 +832,17 @@ async def check_usage(request: UsageCheckRequest):
     Check a user's current usage without incrementing.
     
     Returns: Usage info including remaining estimates
+    Uses Supabase store with fallback to legacy store.
     """
-    usage = user_store.check_usage(request.user_id)
+    # Try Supabase first
+    usage = supabase_store.check_usage(request.user_id)
+    
+    # If no data from Supabase, try legacy store
+    if usage.get("plan") == "free" and usage.get("current_usage", 0) == 0:
+        legacy_usage = user_store.check_usage(request.user_id)
+        if legacy_usage.get("current_usage", 0) > 0:
+            usage = legacy_usage
+    
     return UsageResponse(
         allowed=usage.get("remaining", 0) != 0,
         current_usage=usage.get("current_usage", 0),
@@ -795,8 +858,14 @@ async def increment_usage(request: UsageCheckRequest):
     Increment a user's usage count (call before processing an estimate).
     
     Returns: Whether the request is allowed and usage info
+    Uses Supabase store with fallback to legacy store.
     """
-    result = user_store.increment_usage(request.user_id)
+    # Try Supabase first
+    result = supabase_store.increment_usage(request.user_id)
+    
+    # Also increment in legacy store for backwards compatibility
+    user_store.increment_usage(request.user_id)
+    
     return result
 
 
@@ -806,7 +875,16 @@ async def get_user_subscription(user_id: str = Query(...)):
     Get a user's subscription status.
     
     Returns: Subscription details including plan and usage
+    Uses Supabase store with fallback to legacy store.
     """
+    # Try Supabase first
+    result = supabase_store.get_user_subscription_info(user_id)
+    
+    # If Supabase has data, return it
+    if result.get("customer_id") or result.get("is_active"):
+        return result
+    
+    # Fallback to legacy store
     return user_store.get_user_subscription_info(user_id)
 
 

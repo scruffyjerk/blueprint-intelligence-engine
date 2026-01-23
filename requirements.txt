@@ -39,3 +39,6 @@ reportlab>=4.0.0
 
 # Payments
 stripe>=8.0.0
+
+# Database
+supabase>=2.0.0
