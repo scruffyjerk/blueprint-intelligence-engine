@@ -106,10 +106,10 @@ class RoomData(BaseModel):
 class BlueprintAnalysis(BaseModel):
     filename: str
     rooms: List[RoomData]
-    total_area: Optional[str] = None
-    unit_system: str
+    total_area: Optional[Union[str, int, float]] = None
+    unit_system: str = "imperial"
     warnings: List[str] = []
-    model_used: str
+    model_used: Optional[str] = None
 
 
 class MaterialQuantityResponse(BaseModel):
