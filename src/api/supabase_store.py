@@ -382,25 +382,66 @@ class SupabaseUserStore:
     ) -> bool:
         """Handle checkout.session.completed webhook."""
         if not self.client:
+            print("Supabase client not initialized - cannot handle checkout")
             return False
         
         try:
-            # Find user by email
+            print(f"Processing checkout for: {customer_email}, plan: {plan}")
+            
+            # Find user by email (case-insensitive)
             profile = self.get_profile_by_email(customer_email)
             
             if not profile:
-                # User doesn't exist in profiles - this shouldn't happen if they signed up
-                # But we'll handle it gracefully by logging
-                print(f"Warning: No profile found for email {customer_email}")
-                return False
+                # Try to find by Stripe customer ID
+                profile = self.get_profile_by_stripe_customer(customer_id)
+            
+            if not profile:
+                # User doesn't exist - try to find in auth.users and create profile
+                print(f"No profile found for {customer_email}, attempting to find in auth.users")
+                try:
+                    # Search auth.users for this email
+                    users = self.client.auth.admin.list_users()
+                    auth_user = None
+                    for user in users:
+                        if user.email and user.email.lower() == customer_email.lower():
+                            auth_user = user
+                            break
+                    
+                    if auth_user:
+                        # Create profile for this auth user
+                        print(f"Found auth user {auth_user.id}, creating profile")
+                        profile = {
+                            "id": auth_user.id,
+                            "email": customer_email.lower()
+                        }
+                        self.client.table("profiles").insert({
+                            "id": auth_user.id,
+                            "email": customer_email.lower(),
+                            "user_id": auth_user.id,
+                            "plan": plan,
+                            "subscription_status": plan,
+                            "stripe_customer_id": customer_id
+                        }).execute()
+                    else:
+                        print(f"No auth user found for {customer_email}")
+                        return False
+                except Exception as auth_error:
+                    print(f"Error searching auth.users: {auth_error}")
+                    return False
             
             user_id = profile["id"]
+            print(f"Found user_id: {user_id}")
             
-            # Update profile with Stripe customer ID
-            self.update_profile(user_id, stripe_customer_id=customer_id, plan=plan)
+            # Update profile with Stripe customer ID, plan, AND subscription_status
+            update_result = self.client.table("profiles").update({
+                "stripe_customer_id": customer_id,
+                "plan": plan,
+                "subscription_status": plan  # Frontend reads this column
+            }).eq("id", user_id).execute()
+            print(f"Profile update result: {update_result.data}")
             
             # Create subscription record
-            self.create_subscription(
+            sub_result = self.create_subscription(
                 user_id=user_id,
                 stripe_subscription_id=subscription_id,
                 stripe_customer_id=customer_id,
@@ -408,12 +449,15 @@ class SupabaseUserStore:
                 billing_interval=interval,
                 current_period_end=current_period_end
             )
+            print(f"Subscription create result: {sub_result}")
             
-            print(f"Checkout completed: {customer_email} -> {plan}")
+            print(f"Checkout completed successfully: {customer_email} -> {plan}")
             return True
             
         except Exception as e:
             print(f"Error handling checkout completed: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def handle_subscription_updated(
