@@ -296,7 +296,8 @@ def handle_webhook_event(event: Dict[str, Any]) -> Dict[str, Any]:
         result["action"] = "subscription_created"
         result["customer_id"] = data.get("customer")
         result["subscription_id"] = data.get("subscription")
-        result["customer_email"] = data.get("customer_email")
+        # Get email from customer_email OR customer_details.email (Stripe sends it in different places)
+        result["customer_email"] = data.get("customer_email") or data.get("customer_details", {}).get("email")
         result["plan"] = data.get("metadata", {}).get("plan")
         result["interval"] = data.get("metadata", {}).get("interval")
         
