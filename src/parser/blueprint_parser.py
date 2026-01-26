@@ -1,6 +1,7 @@
 """
-Blueprint Parser - Core module for extracting room data from floor plans using GPT-4 Vision.
+Blueprint Parser - Core module for extracting room data from floor plans using AI Vision.
 
+Supports multiple AI providers: OpenAI GPT-4o and Anthropic Claude 3.5 Sonnet.
 This is the heart of Takeoff.ai's Phase 1 Proof of Concept.
 """
 
@@ -62,84 +63,109 @@ class BlueprintAnalysis:
 
 class BlueprintParser:
     """
-    Parses blueprint images using GPT-4 Vision to extract room information.
+    Parses blueprint images using AI Vision to extract room information.
+    Supports both OpenAI GPT-4o and Anthropic Claude 3.5 Sonnet.
     """
     
-    # The prompt that instructs GPT-4 Vision how to analyze blueprints
+    # The prompt that instructs AI Vision how to analyze blueprints
     ANALYSIS_PROMPT = """You are an expert construction estimator analyzing a residential floor plan. Your PRIMARY task is to READ and EXTRACT the exact dimension labels shown on the blueprint.
 
-STEP 1 - FIND DIMENSION LABELS (CRITICAL):
+STEP 1 - DETECT UNIT SYSTEM (CRITICAL):
+First, determine if the blueprint uses METRIC or IMPERIAL units:
+- METRIC indicators: measurements in meters (m), centimeters (cm), or millimeters (mm), area shown as m² or sq m
+- IMPERIAL indicators: measurements in feet ('), inches ("), or "ft", area shown as sq ft
+
+STEP 2 - FIND DIMENSION LABELS:
 Carefully scan the entire image for dimension annotations. These typically appear as:
-- Numbers with tick marks or arrows (e.g., 14 feet 6 inches or 4.5m)
+- Numbers with tick marks or arrows (e.g., 14'-6" or 4.5m)
 - Dimension lines with measurements above or below them
-- Room labels that include dimensions (e.g., BEDROOM 12x14)
-- Scale indicators (e.g., quarter inch equals one foot)
+- Room labels that include dimensions (e.g., BEDROOM 12x14 or 3.5m x 4.2m)
+- Area labels inside rooms (e.g., 14.8 m² or 150 sq ft)
+- Scale indicators
 - Total dimensions along exterior walls
 
-STEP 2 - EXTRACT EXACT MEASUREMENTS:
+STEP 3 - EXTRACT EXACT MEASUREMENTS:
 For each room where you can READ dimension labels:
 - Use the EXACT numbers shown on the plan
-- Convert all measurements to feet (decimal format)
-- Mark confidence as high
+- Keep measurements in their ORIGINAL unit system
+- If area is shown directly (e.g., "14.8 m²"), use that value
+- Mark confidence as "high" for directly read values
 
-STEP 3 - ESTIMATE ONLY WHEN NECESSARY:
+STEP 4 - ESTIMATE ONLY WHEN NECESSARY:
 For rooms WITHOUT visible dimension labels:
 - Use proportional comparison to rooms WITH labels
-- If a room appears 75% the width of a labeled 16 foot room, estimate 12
-- Mark confidence as medium for proportional estimates
-- Mark confidence as low only if no reference dimensions exist
+- Mark confidence as "medium" for proportional estimates
+- Mark confidence as "low" only if no reference dimensions exist
 
 Please return a JSON object with the following structure:
 {
     "rooms": [
         {
             "name": "Room name (e.g., Living Room, Master Bedroom, Kitchen)",
-            "width": "Width measurement as number only (e.g., 14 or 4.5)",
-            "length": "Length measurement as number only (e.g., 18 or 5.2)",
-            "area": "Calculated area in sq ft (width x length)",
+            "width": "Width measurement as number only (e.g., 14 for feet or 4.5 for meters)",
+            "length": "Length measurement as number only (e.g., 18 for feet or 5.2 for meters)",
+            "area": "Area in original units (e.g., 252 for sq ft or 23.4 for m²)",
             "confidence": "high, medium, or low"
         }
     ],
-    "total_area": "Sum of all room areas",
-    "unit_system": "imperial or metric based on the measurements shown",
-    "warnings": ["List rooms where dimensions were estimated, not read from labels"]
+    "total_area": "Sum of all room areas in original units",
+    "unit_system": "imperial OR metric - based on what you see on the blueprint",
+    "warnings": ["List any rooms where dimensions were estimated rather than read"]
 }
 
-DEFAULT ROOM SIZES (use ONLY when no labels or proportions available):
-- Kitchen: 12x12 (144 sq ft)
-- Bathroom (full): 8x10 (80 sq ft)
-- Bathroom (half/powder): 5x6 (30 sq ft)  
-- Master Bedroom: 14x16 (224 sq ft)
-- Bedroom: 11x12 (132 sq ft)
-- Living Room: 16x18 (288 sq ft)
-- Dining Room: 11x12 (132 sq ft)
-- Walk-in Closet: 6x8 (48 sq ft)
-- Closet: 3x6 (18 sq ft)
-- Laundry: 6x8 (48 sq ft)
-
-CRITICAL RULES:
-1. ALWAYS look for dimension labels FIRST - most professional blueprints have them
-2. NEVER return 0 or null for dimensions
-3. Use imperial units (feet) unless the plan clearly shows metric
-4. For width and length, provide just the number (e.g., 12 not 12 ft)
-5. Include ALL rooms you can identify
-6. Be CONSISTENT - if you identify a room as 12x14, always report it as 12x14
+IMPORTANT RULES:
+1. ALWAYS identify the unit system FIRST by looking at the labels
+2. If you see "m", "m²", or decimal dimensions like 4.02, 3.68 - it's METRIC
+3. If you see feet/inches symbols (', ") or "sq ft" - it's IMPERIAL
+4. Keep all measurements in their ORIGINAL units - do NOT convert
+5. NEVER return 0 or null for dimensions
+6. Include ALL rooms and spaces you can identify (including areas, halls, balconies)
+7. Look for labels OUTSIDE room boundaries too (labels may be placed externally)
+8. Be CONSISTENT - same room should always have same dimensions
 
 Return ONLY the JSON object, no additional text."""
 
-    def __init__(self, api_key: Optional[str] = None, model: str = None):
+    # Supported AI providers
+    PROVIDER_OPENAI = "openai"
+    PROVIDER_CLAUDE = "claude"
+    
+    def __init__(self, api_key: Optional[str] = None, model: str = None, provider: str = None):
         """
         Initialize the parser.
         
         Args:
-            api_key: OpenAI API key. Defaults to OPENAI_API_KEY env var.
-            model: Model to use. Defaults to OPENAI_MODEL env var or 'gpt-4o'.
+            api_key: API key for the provider. Defaults to env var based on provider.
+            model: Model to use. Defaults to env var or provider's best model.
+            provider: AI provider to use ('openai' or 'claude'). Defaults to AI_PROVIDER env var or 'openai'.
         """
+        # Determine provider
+        self.provider = provider or os.getenv("AI_PROVIDER", self.PROVIDER_OPENAI).lower()
+        
+        if self.provider == self.PROVIDER_CLAUDE:
+            self._init_claude(api_key, model)
+        else:
+            self._init_openai(api_key, model)
+    
+    def _init_openai(self, api_key: Optional[str], model: Optional[str]):
+        """Initialize OpenAI client."""
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key or self.api_key == "your_openai_api_key_here":
             raise ValueError("OpenAI API key not configured. Set OPENAI_API_KEY environment variable.")
         self.model = model or os.getenv("OPENAI_MODEL", "gpt-4o")
         self.client = OpenAI(api_key=self.api_key)
+    
+    def _init_claude(self, api_key: Optional[str], model: Optional[str]):
+        """Initialize Anthropic Claude client."""
+        try:
+            import anthropic
+        except ImportError:
+            raise ImportError("anthropic package not installed. Run: pip install anthropic")
+        
+        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
+        if not self.api_key:
+            raise ValueError("Anthropic API key not configured. Set ANTHROPIC_API_KEY environment variable.")
+        self.model = model or os.getenv("CLAUDE_MODEL", "claude-3-5-sonnet-20241022")
+        self.client = anthropic.Anthropic(api_key=self.api_key)
     
     def _encode_image(self, image_path: str) -> tuple[str, str]:
         """
@@ -170,6 +196,60 @@ Return ONLY the JSON object, no additional text."""
         
         return image_data, media_type
     
+    def _call_openai(self, image_data: str, media_type: str) -> str:
+        """Call OpenAI Vision API."""
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": self.ANALYSIS_PROMPT
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{media_type};base64,{image_data}",
+                                "detail": "high"
+                            }
+                        }
+                    ]
+                }
+            ],
+            max_tokens=2000,
+            temperature=0
+        )
+        return response.choices[0].message.content
+    
+    def _call_claude(self, image_data: str, media_type: str) -> str:
+        """Call Anthropic Claude Vision API."""
+        response = self.client.messages.create(
+            model=self.model,
+            max_tokens=2000,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": media_type,
+                                "data": image_data
+                            }
+                        },
+                        {
+                            "type": "text",
+                            "text": self.ANALYSIS_PROMPT
+                        }
+                    ]
+                }
+            ]
+        )
+        return response.content[0].text
+    
     def parse(self, image_source: Union[str, bytes], filename: str = "blueprint") -> BlueprintAnalysis:
         """
         Parse a blueprint image and extract room information.
@@ -196,33 +276,11 @@ Return ONLY the JSON object, no additional text."""
                 image_data, media_type = self._encode_image(image_source)
                 filename = Path(image_source).name
             
-            # Call OpenAI Vision API
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": self.ANALYSIS_PROMPT
-                            },
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:{media_type};base64,{image_data}",
-                                    "detail": "high"  # Use high detail for better accuracy
-                                }
-                            }
-                        ]
-                    }
-                ],
-                max_tokens=2000,
-                temperature=0  # Zero temperature for deterministic, consistent outputs
-            )
-            
-            # Extract the response
-            raw_response = response.choices[0].message.content
+            # Call the appropriate AI provider
+            if self.provider == self.PROVIDER_CLAUDE:
+                raw_response = self._call_claude(image_data, media_type)
+            else:
+                raw_response = self._call_openai(image_data, media_type)
             
             # Parse the JSON response
             try:
@@ -241,7 +299,7 @@ Return ONLY the JSON object, no additional text."""
                     rooms=[],
                     warnings=[f"Failed to parse AI response: {str(e)}"],
                     raw_response=raw_response,
-                    model_used=self.model
+                    model_used=f"{self.provider}:{self.model}"
                 )
             
             # Convert to Room objects
@@ -265,7 +323,7 @@ Return ONLY the JSON object, no additional text."""
                 unit_system=data.get("unit_system", "unknown"),
                 warnings=data.get("warnings", []),
                 raw_response=raw_response,
-                model_used=self.model
+                model_used=f"{self.provider}:{self.model}"
             )
             
             return analysis

@@ -136,14 +136,55 @@ class DimensionParser:
     
     @classmethod
     def parse(cls, dimension_str: str, unit_system: UnitSystem = None) -> Optional[Dimensions]:
-        """Parse a dimension string into a Dimensions object."""
+        """Parse a dimension string into a Dimensions object.
+        
+        Args:
+            dimension_str: String like "12 x 14" or "3.5 x 4.2"
+            unit_system: UnitSystem.METRIC or UnitSystem.IMPERIAL to force interpretation
+        """
         if not dimension_str:
             return None
         
         # Clean the string
         dim_str = dimension_str.strip()
         
-        # Try imperial format first (e.g., "12'-6" x 14'-0"")
+        # If unit system is explicitly specified, use it
+        if unit_system == UnitSystem.METRIC:
+            # Parse as metric - numbers are in meters
+            match = cls.METRIC_PATTERN.search(dim_str)
+            if match:
+                width = float(match.group(1).replace(',', '.'))
+                length = float(match.group(2).replace(',', '.'))
+                return Dimensions(width_m=width, length_m=length)
+            # Try simple number extraction for metric
+            numbers = re.findall(r'(\d+[.,]?\d*)', dim_str)
+            if len(numbers) >= 2:
+                width = float(numbers[0].replace(',', '.'))
+                length = float(numbers[1].replace(',', '.'))
+                return Dimensions(width_m=width, length_m=length)
+        
+        elif unit_system == UnitSystem.IMPERIAL:
+            # Parse as imperial - numbers are in feet
+            # First try feet-inches format
+            match = cls.IMPERIAL_PATTERN.search(dim_str)
+            if match:
+                width_ft = int(match.group(1)) + (int(match.group(2) or 0) / 12)
+                length_ft = int(match.group(3)) + (int(match.group(4) or 0) / 12)
+                return Dimensions(
+                    width_m=width_ft / 3.28084,
+                    length_m=length_ft / 3.28084
+                )
+            # Try simple number extraction for imperial (numbers are feet)
+            numbers = re.findall(r'(\d+[.,]?\d*)', dim_str)
+            if len(numbers) >= 2:
+                width_ft = float(numbers[0].replace(',', '.'))
+                length_ft = float(numbers[1].replace(',', '.'))
+                return Dimensions(
+                    width_m=width_ft / 3.28084,
+                    length_m=length_ft / 3.28084
+                )
+        
+        # Auto-detect: Try imperial format first (e.g., "12'-6" x 14'-0"")
         match = cls.IMPERIAL_PATTERN.search(dim_str)
         if match:
             width_ft = int(match.group(1)) + (int(match.group(2) or 0) / 12)
@@ -163,14 +204,43 @@ class DimensionParser:
         return None
     
     @classmethod
-    def parse_area(cls, area_str: str) -> Optional[float]:
-        """Parse an area string and return area in square meters."""
+    def parse_area(cls, area_str: str, unit_system: UnitSystem = None) -> Optional[float]:
+        """Parse an area string and return area in square meters.
+        
+        Args:
+            area_str: String like "14.8 m²" or "150 sq ft" or just "14.8"
+            unit_system: UnitSystem.METRIC or UnitSystem.IMPERIAL to force interpretation
+        """
         if not area_str:
             return None
         
-        area_str = area_str.strip()
+        # Convert to string if it's a number
+        area_str = str(area_str).strip()
         
-        # Try metric area (e.g., "14.8 m²")
+        # If unit system is explicitly specified
+        if unit_system == UnitSystem.METRIC:
+            # Try to extract number, treat as m²
+            match = cls.AREA_METRIC_PATTERN.search(area_str)
+            if match:
+                return float(match.group(1).replace(',', '.'))
+            # Try plain number
+            numbers = re.findall(r'(\d+[.,]?\d*)', area_str)
+            if numbers:
+                return float(numbers[0].replace(',', '.'))
+        
+        elif unit_system == UnitSystem.IMPERIAL:
+            # Try to extract number, treat as sq ft
+            match = cls.AREA_IMPERIAL_PATTERN.search(area_str)
+            if match:
+                sqft = float(match.group(1).replace(',', '.'))
+                return sqft / 10.7639  # Convert to m²
+            # Try plain number, assume sq ft
+            numbers = re.findall(r'(\d+[.,]?\d*)', area_str)
+            if numbers:
+                sqft = float(numbers[0].replace(',', '.'))
+                return sqft / 10.7639  # Convert to m²
+        
+        # Auto-detect: Try metric area (e.g., "14.8 m²")
         match = cls.AREA_METRIC_PATTERN.search(area_str)
         if match:
             return float(match.group(1).replace(',', '.'))
@@ -408,14 +478,22 @@ class MaterialCalculator:
         dimensions = None
         floor_area_m2 = None
         
+        # Determine unit system from room data
+        unit_str = room_data.get('unit', 'unknown').lower()
+        unit_system = None
+        if unit_str == 'metric':
+            unit_system = UnitSystem.METRIC
+        elif unit_str == 'imperial':
+            unit_system = UnitSystem.IMPERIAL
+        
         # Try to get dimensions from width/length
         if room_data.get('width') and room_data.get('length'):
             dim_str = f"{room_data['width']} x {room_data['length']}"
-            dimensions = DimensionParser.parse(dim_str)
+            dimensions = DimensionParser.parse(dim_str, unit_system)
         
         # If no dimensions, try to get area directly
         if not dimensions and room_data.get('area'):
-            floor_area_m2 = DimensionParser.parse_area(room_data['area'])
+            floor_area_m2 = DimensionParser.parse_area(room_data['area'], unit_system)
             if floor_area_m2:
                 # Estimate dimensions assuming square room
                 side = floor_area_m2 ** 0.5
