@@ -164,7 +164,7 @@ Return ONLY the JSON object, no additional text."""
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         if not self.api_key:
             raise ValueError("Anthropic API key not configured. Set ANTHROPIC_API_KEY environment variable.")
-        self.model = model or os.getenv("CLAUDE_MODEL", "claude-3-5-sonnet-20241022")
+        self.model = model or os.getenv("CLAUDE_MODEL", "claude-sonnet-4-5-20250929")
         self.client = anthropic.Anthropic(api_key=self.api_key)
     
     def _encode_image(self, image_path: str) -> tuple[str, str]:
