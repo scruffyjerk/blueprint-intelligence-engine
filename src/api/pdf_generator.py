@@ -94,6 +94,9 @@ class PDFReportGenerator:
         cost_breakdown: Dict[str, float],
         tier_comparisons: List[Dict[str, Any]],
         selected_tier: str = 'standard',
+        quality_tier: str = 'standard',
+        region: str = 'us_national',
+        include_labor: bool = True,
         total_area: float = 0,
         contingency_percent: float = 10,
         filename: str = 'blueprint.jpg',
@@ -120,13 +123,21 @@ class PDFReportGenerator:
         # Header
         story.extend(self._build_header(project_name, filename))
         
+        # Analysis Settings
+        story.extend(self._build_analysis_settings(
+            quality_tier=quality_tier,
+            region=region,
+            include_labor=include_labor,
+            contingency_percent=contingency_percent,
+            labor_availability=labor_availability
+        ))
+        
         # Project Summary
         story.extend(self._build_summary(
             total_area=total_area,
             room_count=len(rooms),
             selected_tier=selected_tier,
-            grand_total=cost_breakdown.get('grand_total', 0),
-            labor_availability=labor_availability
+            grand_total=cost_breakdown.get('grand_total', 0)
         ))
         
         # Room Breakdown
@@ -199,13 +210,80 @@ class PDFReportGenerator:
         
         return elements
     
+    def _build_analysis_settings(
+        self,
+        quality_tier: str,
+        region: str,
+        include_labor: bool,
+        contingency_percent: float,
+        labor_availability: str
+    ) -> List:
+        """Build the analysis settings section."""
+        elements = []
+        
+        elements.append(Paragraph('Analysis Settings', self.styles['ReportSection']))
+        
+        # Format quality tier
+        tier_labels = {
+            'budget': 'Budget',
+            'standard': 'Standard',
+            'premium': 'Premium',
+            'luxury': 'Luxury'
+        }
+        
+        # Format region
+        def format_region(region_str):
+            if not region_str.startswith('us_'):
+                return region_str  # State name
+            region_map = {
+                'us_national': 'National Average',
+                'us_northeast': 'Northeast',
+                'us_southeast': 'Southeast',
+                'us_midwest': 'Midwest',
+                'us_southwest': 'Southwest',
+                'us_west': 'West',
+            }
+            return region_map.get(region_str, region_str)
+        
+        # Format labor availability
+        labor_labels = {
+            'low': 'Low (Shortage +15%)',
+            'average': 'Average',
+            'high': 'High (Surplus -10%)'
+        }
+        
+        settings_data = [
+            ['Quality Tier', tier_labels.get(quality_tier, 'Standard')],
+            ['Location', format_region(region)],
+            ['Labor Availability', labor_labels.get(labor_availability, 'Average')],
+            ['Labor Costs', 'Included' if include_labor else 'Not Included'],
+            ['Contingency', f'{contingency_percent}%'],
+        ]
+        
+        table = Table(settings_data, colWidths=[2*inch, 3*inch])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), self.LIGHT_GRAY),
+            ('TEXTCOLOR', (0, 0), (-1, -1), self.SECONDARY_COLOR),
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+            ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 0.5, self.BORDER_COLOR),
+        ]))
+        
+        elements.append(table)
+        elements.append(Spacer(1, 20))
+        
+        return elements
+    
     def _build_summary(
         self,
         total_area: float,
         room_count: int,
         selected_tier: str,
-        grand_total: float,
-        labor_availability: str = 'average'
+        grand_total: float
     ) -> List:
         """Build the project summary section."""
         elements = []
@@ -219,17 +297,10 @@ class PDFReportGenerator:
             'luxury': 'Luxury'
         }
         
-        labor_labels = {
-            'low': 'Low (Shortage +15%)',
-            'average': 'Average',
-            'high': 'High (Surplus -10%)'
-        }
-        
         summary_data = [
             ['Total Area', f'{total_area:,.0f} sq ft'],
             ['Rooms Detected', str(room_count)],
             ['Quality Tier', tier_labels.get(selected_tier, 'Standard')],
-            ['Labor Availability', labor_labels.get(labor_availability, 'Average')],
             ['Estimated Total', f'${grand_total:,.2f}'],
         ]
         

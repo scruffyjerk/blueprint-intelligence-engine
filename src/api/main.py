@@ -208,6 +208,9 @@ class PDFReportRequest(BaseModel):
     cost_breakdown: CostBreakdownInput
     tier_comparisons: List[TierComparisonInput]
     selected_tier: str = "standard"
+    quality_tier: str = "standard"
+    region: str = "us_national"
+    include_labor: bool = True
     total_area: float = 0
     contingency_percent: float = 10
     labor_availability: str = "average"
@@ -596,6 +599,9 @@ async def generate_pdf_report(request: PDFReportRequest):
             cost_breakdown=cost_breakdown,
             tier_comparisons=tier_comparisons,
             selected_tier=request.selected_tier,
+            quality_tier=request.quality_tier,
+            region=request.region,
+            include_labor=request.include_labor,
             total_area=request.total_area,
             contingency_percent=request.contingency_percent,
             filename=request.filename,
