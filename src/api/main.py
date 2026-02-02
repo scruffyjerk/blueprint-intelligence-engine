@@ -43,6 +43,7 @@ from api.stripe_integration import (
 )
 from api.user_store import user_store
 from api.supabase_store import supabase_store
+from utils.location_pricing import get_cost_multiplier
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -413,6 +414,7 @@ async def full_analysis(
     project_name: str = Query("My Project"),
     quality_tier: QualityTierEnum = Query(QualityTierEnum.standard),
     region: RegionEnum = Query(RegionEnum.us_national),
+    zipcode: Optional[str] = Query(None),
     include_labor: bool = Query(True),
     contingency_percent: float = Query(0.10),
     labor_availability: LaborAvailabilityEnum = Query(LaborAvailabilityEnum.average)
@@ -499,43 +501,62 @@ async def full_analysis(
             
             estimate = estimator.estimate_project(project_name, totals)
             
+            # Apply location-based pricing if zipcode is provided
+            location_multiplier, location_name = get_cost_multiplier(zipcode=zipcode)
+            
             estimate_items = []
             for item in estimate.estimates:
                 # Handle quality_tier - could be Enum or string
                 tier_value = item.quality_tier.value if hasattr(item.quality_tier, 'value') else str(item.quality_tier)
+                
+                # Apply location multiplier to costs
+                adjusted_material_cost = item.material_cost * location_multiplier
+                adjusted_labor_cost = item.labor_cost * location_multiplier
+                adjusted_total_cost = item.total_cost * location_multiplier
+                adjusted_price_per_unit = item.price_per_unit * location_multiplier
+                
                 estimate_items.append(CostEstimateItem(
                     material_type=item.material_type,
                     display_name=item.display_name,
                     quality_tier=tier_value,
                     units_needed=item.units_needed,
                     unit=item.unit,
-                    material_cost=item.material_cost,
-                    labor_cost=item.labor_cost,
-                    total_cost=item.total_cost,
-                    price_per_unit=item.price_per_unit,
+                    material_cost=adjusted_material_cost,
+                    labor_cost=adjusted_labor_cost,
+                    total_cost=adjusted_total_cost,
+                    price_per_unit=adjusted_price_per_unit,
                     brand_example=item.brand_example
                 ))
+            
+            # Apply location multiplier to totals
+            adjusted_subtotal_materials = estimate.subtotal_materials * location_multiplier
+            adjusted_subtotal_labor = estimate.subtotal_labor * location_multiplier
+            adjusted_contingency_amount = estimate.contingency_amount * location_multiplier
+            adjusted_total_estimate = estimate.total_estimate * location_multiplier
+            
+            # Update region display to show location if zipcode was provided
+            region_display = location_name if zipcode else estimate.region.value
             
             cost_estimate = ProjectEstimateResponse(
                 project_name=estimate.project_name,
                 timestamp=estimate.timestamp,
-                region=estimate.region.value,
+                region=region_display,
                 estimates=estimate_items,
-                subtotal_materials=estimate.subtotal_materials,
-                subtotal_labor=estimate.subtotal_labor,
+                subtotal_materials=adjusted_subtotal_materials,
+                subtotal_labor=adjusted_subtotal_labor,
                 contingency_percent=estimate.contingency_percent,
-                contingency_amount=estimate.contingency_amount,
-                total_estimate=estimate.total_estimate,
+                contingency_amount=adjusted_contingency_amount,
+                total_estimate=adjusted_total_estimate,
                 notes=estimate.notes
             )
             
-            # Step 4: Quality tier comparison
+            # Step 4: Quality tier comparison (with location multiplier)
             comparisons = compare_quality_tiers(totals, reg, include_labor, contingency_percent, labor_avail)
             quality_comparison = QualityComparisonResponse(
-                budget=comparisons['budget'],
-                standard=comparisons['standard'],
-                premium=comparisons['premium'],
-                luxury=comparisons['luxury']
+                budget=comparisons['budget'] * location_multiplier,
+                standard=comparisons['standard'] * location_multiplier,
+                premium=comparisons['premium'] * location_multiplier,
+                luxury=comparisons['luxury'] * location_multiplier
             )
             
             return FullAnalysisResponse(
