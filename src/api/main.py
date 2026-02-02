@@ -504,8 +504,10 @@ async def full_analysis(
             
             estimate = estimator.estimate_project(project_name, totals)
             
-            # Apply location-based pricing if zipcode is provided
-            location_multiplier, location_name = get_cost_multiplier(zipcode=zipcode)
+            # Apply location-based pricing
+            # Zipcode takes priority, then state code from region, then national average
+            state_code = region if region and not region.startswith('us_') else None
+            location_multiplier, location_name = get_cost_multiplier(zipcode=zipcode, state_code=state_code)
             
             estimate_items = []
             for item in estimate.estimates:
@@ -537,8 +539,9 @@ async def full_analysis(
             adjusted_contingency_amount = estimate.contingency_amount * location_multiplier
             adjusted_total_estimate = estimate.total_estimate * location_multiplier
             
-            # Update region display to show location if zipcode was provided
-            region_display = location_name if zipcode else estimate.region.value
+            # Update region display to show location name
+            # Priority: zipcode location > state location > original region
+            region_display = location_name
             
             cost_estimate = ProjectEstimateResponse(
                 project_name=estimate.project_name,
