@@ -338,7 +338,7 @@ async def estimate_costs(
     materials: Dict[str, MaterialQuantityResponse],
     project_name: str = Query("My Project"),
     quality_tier: QualityTierEnum = Query(QualityTierEnum.standard),
-    region: RegionEnum = Query(RegionEnum.us_national),
+    region: Optional[str] = Query("us_national"),
     include_labor: bool = Query(True),
     contingency_percent: float = Query(0.10)
 ):
@@ -350,7 +350,12 @@ async def estimate_costs(
     try:
         # Convert quality tier and region
         tier = QualityTier(quality_tier.value)
-        reg = Region(region.value)
+        # If region is a state code (2 letters), use US_NATIONAL as base
+        # Location pricing will handle state-specific multipliers
+        if region and len(region) == 2:
+            reg = Region.US_NATIONAL
+        else:
+            reg = Region(region)
         
         # Initialize estimator
         estimator = CostEstimator(
@@ -416,7 +421,7 @@ async def full_analysis(
     file: UploadFile = File(...),
     project_name: str = Query("My Project"),
     quality_tier: QualityTierEnum = Query(QualityTierEnum.standard),
-    region: RegionEnum = Query(RegionEnum.us_national),
+    region: Optional[str] = Query("us_national"),
     zipcode: Optional[str] = Query(None),
     include_labor: bool = Query(True),
     contingency_percent: float = Query(0.10),
@@ -489,7 +494,12 @@ async def full_analysis(
             
             # Step 3: Estimate costs
             tier = QualityTier(quality_tier.value)
-            reg = Region(region.value)
+            # If region is a state code (2 letters), use US_NATIONAL as base
+            # Location pricing will handle state-specific multipliers
+            if region and len(region) == 2:
+                reg = Region.US_NATIONAL
+            else:
+                reg = Region(region)
             
             # Convert labor availability
             labor_avail = LaborAvailability(labor_availability.value)
